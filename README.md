@@ -1,103 +1,103 @@
-<img width="1280" height="640" alt="git (1)" src="https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd" />
+<img width="1280" height="640" alt="Useless Projects" src="https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd" />
 
-
-
-# [Project Name] 🎯
-
+# Tiny Neighborhood 🎯
 
 ## Basic Details
-### Team Name: [Name]
 
+### Team Name: [Add team name]
 
 ### Team Members
-- Team Lead: [Name] - [College]
-- Member 2: [Name] - [College]
-- Member 3: [Name] - [College]
+
+- Team Lead: [Add name and college]
+- Member 2: [Add name and college]
+- Member 3: [Add name and college]
 
 ### Project Description
-[2-3 lines about what your project does]
+
+A tiny neighborhood that keeps living when nobody is watching. Citizens have their own limited knowledge and use the same validated actions that human players will eventually use.
 
 ### The Problem (that doesn't exist)
-[What ridiculous problem are you solving?]
+
+Real life is inconveniently large and difficult to observe all at once.
 
 ### The Solution (that nobody asked for)
-[How are you solving it? Keep it fun!]
+
+Make a much smaller reality with one street, two homes, one shop, and three citizens whose lives can become unnecessarily dramatic.
 
 ## Technical Details
+
 ### Technologies/Components Used
-For Software:
-- [Languages used]
-- [Frameworks used]
-- [Libraries used]
-- [Tools used]
 
-For Hardware:
-- [List main components]
-- [List specifications]
-- [List tools required]
+- Python 3.10+
+- Standard library only
+- JSON persistence
+- `unittest`
 
-### Implementation
-For Software:
-# Installation
-[commands]
+### Installation
 
-# Run
-[commands]
+No third-party packages are required.
 
-### Project Documentation
-For Software:
+### Run
 
-# Screenshots (Add at least 3)
-![Screenshot1](Add screenshot 1 here with proper name)
-*Add caption explaining what this shows*
+```sh
+python3 server.py
+```
 
-![Screenshot2](Add screenshot 2 here with proper name)
-*Add caption explaining what this shows*
+The headless server restores `data/world.json` and advances one simulated tick per real second. Stop it with Ctrl+C. Use `--save PATH` for another save or `--tick-seconds 0.5` for a faster clock.
 
-![Screenshot3](Add screenshot 3 here with proper name)
-*Add caption explaining what this shows*
+### Verify
 
-# Diagrams
-![Workflow](Add your workflow/architecture diagram here)
-*Add caption explaining your workflow*
+```sh
+python3 -m unittest discover -s tests -v
+```
 
-For Hardware:
+## Current Systems
 
-# Schematic & Circuit
-![Circuit](Add your circuit diagram here)
-*Add caption explaining connections*
+- A persistent world with one street, two homes, one shop, and three citizens.
+- A simulation clock that runs without a browser connected.
+- Atomic JSON saves, restoration, validation, and an ordered event log.
+- One shared `talk` action for future human, rule-based, and AI callers.
+- Private recipient memories, limited beliefs, and bounded relationship values.
 
-![Schematic](Add your schematic diagram here)
-*Add caption explaining the schematic*
+Public snapshots never expose private social state. Trusted server code can call `citizen_context(citizen_id)` for one citizen's detached private context.
 
-# Build Photos
-![Components](Add photo of your components here)
-*List out all components shown*
+## Development Timeline
 
-![Build](Add photos of build process here)
-*Explain the build steps*
+- [x] Phase 0 — Define the first version
+- [x] Phase 1 — World foundation
+- [x] Phase 2 — Shared social action, private memory, and relationships
+- [ ] Phase 3 — Autonomous citizens
+- [ ] Phase 4 — Deeper memory and relationships
+- [ ] Phase 5 — AI decisions
+- [ ] Phase 6 — Browser view
+- [ ] Phase 7 — Human participation
 
-![Final](Add photo of final product here)
-*Explain the final build*
+Detailed checkpoints:
+
+- [Phase 1 handoff](docs/phases/phase-1.md)
+- [Phase 2 handoff](docs/phases/phase-2.md)
+
+## Project Documentation
+
+### Screenshots
+
+Screenshots will be added when the browser view is implemented.
+
+### Diagrams
+
+The architecture diagram will be added with the browser and networking layers.
 
 ### Project Demo
-# Video
-[Add your demo video link here]
-*Explain what the video demonstrates*
 
-# Additional Demos
-[Add any extra demo materials/links]
+The demo link will be added when the first playable version is ready.
 
 ## Team Contributions
-- [Name 1]: [Specific contributions]
-- [Name 2]: [Specific contributions]
-- [Name 3]: [Specific contributions]
+
+- [Add contribution details]
 
 ---
-Made with ❤️ at TinkerHub Useless Projects 
+
+Made with ❤️ at TinkerHub Useless Projects
 
 ![Static Badge](https://img.shields.io/badge/TinkerHub-24?color=%23000000&link=https%3A%2F%2Fwww.tinkerhub.org%2F)
 ![Static Badge](https://img.shields.io/badge/UselessProjects--26-26?link=https%3A%2F%2Ftinkerhub.org%2Fevents%2F1M8ORET9A1%2Fuseless-projects-3.0)
-
-
-
