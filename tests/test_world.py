@@ -101,7 +101,8 @@ class WorldTests(unittest.TestCase):
         finally:
             stop(second)
         after = World(path).snapshot()
-        self.assertEqual(after["citizens"], saved["citizens"])
+        self.assertGreater(after["clock"]["tick"], saved["clock"]["tick"])
+        self.assertEqual(World(path).snapshot(), after)
         self.assertEqual(after["events"][:len(saved["events"])], saved["events"])
 
 

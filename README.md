@@ -43,7 +43,7 @@ No third-party packages are required.
 python3 server.py
 ```
 
-The headless server restores `data/world.json` and advances one simulated tick per real second. Stop it with Ctrl+C. Use `--save PATH` for another save or `--tick-seconds 0.5` for a faster clock.
+The headless server restores `data/world.json` and advances one simulated hour per real second. Stop it with Ctrl+C. Use `--save PATH` for another save or `--tick-seconds 0.5` for a faster clock.
 
 ### Verify
 
@@ -56,8 +56,10 @@ python3 -m unittest discover -s tests -v
 - A persistent world with one street, two homes, one shop, and three citizens.
 - A simulation clock that runs without a browser connected.
 - Atomic JSON saves, restoration, validation, and an ordered event log.
-- One shared `talk` action for future human, rule-based, and AI callers.
+- Shared `talk` and connected-path `move` actions for human, rule-based, and AI callers.
 - Private recipient memories, limited beliefs, and bounded relationship values.
+- Bounded hunger and energy, a regular destination, a daily schedule, and visible activity.
+- Deterministic citizens who travel to the shop, return home, rest, and sleep.
 
 Public snapshots never expose private social state. Trusted server code can call `citizen_context(citizen_id)` for one citizen's detached private context.
 
@@ -66,7 +68,7 @@ Public snapshots never expose private social state. Trusted server code can call
 - [x] Phase 0 — Define the first version
 - [x] Phase 1 — World foundation
 - [x] Phase 2 — Shared social action, private memory, and relationships
-- [ ] Phase 3 — Autonomous citizens
+- [x] Phase 3 — Everyday life and motives
 - [ ] Phase 4 — Deeper memory and relationships
 - [ ] Phase 5 — AI decisions
 - [ ] Phase 6 — Browser view
@@ -76,6 +78,7 @@ Detailed checkpoints:
 
 - [Phase 1 handoff](docs/phases/phase-1.md)
 - [Phase 2 handoff](docs/phases/phase-2.md)
+- [Phase 3 handoff](docs/phases/phase-3.md)
 
 ## Project Documentation
 
