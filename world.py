@@ -2,8 +2,10 @@
 
 import copy
 import json
+import math
 import os
 from pathlib import Path
+import queue
 import tempfile
 import threading
 
@@ -12,11 +14,44 @@ MAX_MESSAGE_LENGTH = 500
 MAX_SOCIAL_VALUE = 5
 TALK_INTENTS = {"neutral", "confide", "encourage", "insult", "report_help", "report_harm"}
 REPORT_INTENTS = {"report_help", "report_harm"}
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 HOURS_PER_DAY = 24
 LOW_ENERGY = 25
 RESTED_ENERGY = 60
 ACTIVITIES = {"sleeping", "travelling", "resting", "at_regular_destination"}
+MAX_IDENTITY_TEXT_LENGTH = 160
+MAX_TRAIT_LENGTH = 40
+MAX_PERSONALITY_TRAITS = 3
+MAX_AI_CONTEXT_MEMORIES = 20
+AI_REPLY_COOLDOWN_TICKS = 1
+AI_TIMEOUT_SECONDS = 1.0
+
+
+STARTER_IDENTITIES = {
+    "citizen-1": {
+        "personality_traits": ["curious", "considerate"],
+        "personal_goal": "Understand the people in the neighborhood.",
+        "speaking_style": "Warm, concise, and observant.",
+    },
+    "citizen-2": {
+        "personality_traits": ["practical", "reserved"],
+        "personal_goal": "Keep home life stable and dependable.",
+        "speaking_style": "Direct, calm, and economical.",
+    },
+    "citizen-3": {
+        "personality_traits": ["energetic", "helpful"],
+        "personal_goal": "Become someone the neighborhood can rely on.",
+        "speaking_style": "Friendly, upbeat, and candid.",
+    },
+}
+
+
+def default_identity(citizen_id):
+    return copy.deepcopy(STARTER_IDENTITIES.get(citizen_id, {
+        "personality_traits": ["thoughtful"],
+        "personal_goal": "Build a steady life in the neighborhood.",
+        "speaking_style": "Plainspoken and concise.",
+    }))
 
 
 def starter_world():
@@ -37,6 +72,7 @@ def starter_world():
             f"citizen-{i}": {
                 "name": name, "location_id": home, "home_id": home,
                 "food": 0, "money": 100,
+                "identity": default_identity(f"citizen-{i}"),
                 "needs": {"hunger": 0, "energy": 100},
                 "schedule": {
                     "regular_destination_id": "shop",
@@ -65,7 +101,7 @@ def validate(state, require_private_events=False):
     def natural(value):
         return type(value) is int and value >= 0
 
-    require(state["schema_version"] in (1, 2, 3), "Unsupported save schema")
+    require(state["schema_version"] in (1, 2, 3, 4), "Unsupported save schema")
     clock = state["clock"]
     require(natural(clock["tick"]) and type(clock["running"]) is bool, "Invalid clock")
     locations = state["locations"]
@@ -77,7 +113,35 @@ def validate(state, require_private_events=False):
         require(citizen["location_id"] in locations, "Invalid citizen location")
         require(citizen["home_id"] in locations, "Invalid home reference")
         require(locations[citizen["home_id"]]["kind"] == "home", "Home must reference a home")
-        if state["schema_version"] == 3:
+        if state["schema_version"] == 4:
+            identity = citizen.get("identity")
+            require(
+                isinstance(identity, dict)
+                and set(identity) == {"personality_traits", "personal_goal", "speaking_style"},
+                "Invalid citizen identity",
+            )
+            traits = identity["personality_traits"]
+            require(
+                isinstance(traits, list)
+                and 1 <= len(traits) <= MAX_PERSONALITY_TRAITS
+                and all(
+                    isinstance(trait, str)
+                    and trait.strip()
+                    and len(trait) <= MAX_TRAIT_LENGTH
+                    for trait in traits
+                ),
+                "Invalid personality traits",
+            )
+            require(
+                all(
+                    isinstance(identity[field], str)
+                    and identity[field].strip()
+                    and len(identity[field]) <= MAX_IDENTITY_TEXT_LENGTH
+                    for field in ("personal_goal", "speaking_style")
+                ),
+                "Invalid identity text",
+            )
+        if state["schema_version"] in (3, 4):
             needs = citizen.get("needs")
             require(
                 isinstance(needs, dict) and set(needs) == {"hunger", "energy"},
@@ -142,7 +206,7 @@ def validate(state, require_private_events=False):
         previous_id, previous_tick = event["id"], event["tick"]
 
     private_social = state.get("private_social", {})
-    require(state["schema_version"] in (2, 3) or not private_social, "Schema 1 cannot contain social state")
+    require(state["schema_version"] in (2, 3, 4) or not private_social, "Schema 1 cannot contain social state")
     require(isinstance(private_social, dict), "Invalid private social state")
     event_by_id = {event["id"]: event for event in state["events"]}
     citizens = state["citizens"]
@@ -214,24 +278,44 @@ def validate(state, require_private_events=False):
             "Talk event is missing its private recipient memory",
         )
 
+    private_ai = state.get("private_ai", {})
+    require(state["schema_version"] == 4 or not private_ai, "Older schemas cannot contain AI state")
+    require(isinstance(private_ai, dict), "Invalid private AI state")
+    for owner_id, ai_state in private_ai.items():
+        require(owner_id in citizens and isinstance(ai_state, dict), "Invalid AI state owner")
+        require(set(ai_state) == {"last_reply_tick_by_actor"}, "Invalid AI state")
+        reply_ticks = ai_state["last_reply_tick_by_actor"]
+        require(isinstance(reply_ticks, dict), "Invalid AI reply cooldowns")
+        for actor_id, tick in reply_ticks.items():
+            require(
+                actor_id in citizens
+                and actor_id != owner_id
+                and natural(tick)
+                and tick <= clock["tick"],
+                "Invalid AI reply cooldown",
+            )
+
 
 def migrate(state):
     """Return a validated current-schema copy without discarding old world data."""
-    validate(state, require_private_events=state.get("schema_version") in (2, 3))
+    original_version = state.get("schema_version")
+    validate(state, require_private_events=original_version in (2, 3, 4))
     if state["schema_version"] == SCHEMA_VERSION:
         return copy.deepcopy(state)
     candidate = copy.deepcopy(state)
     candidate["schema_version"] = SCHEMA_VERSION
-    for citizen in candidate["citizens"].values():
-        citizen["needs"] = {"hunger": 0, "energy": 100}
-        citizen["schedule"] = {
-            "regular_destination_id": candidate["shop"]["location_id"],
-            "leave_home_hour": 8,
-            "return_home_hour": 18,
-            "sleep_hour": 22,
-            "wake_hour": 6,
-        }
-        citizen["activity"] = "resting"
+    for citizen_id, citizen in candidate["citizens"].items():
+        if original_version in (1, 2):
+            citizen["needs"] = {"hunger": 0, "energy": 100}
+            citizen["schedule"] = {
+                "regular_destination_id": candidate["shop"]["location_id"],
+                "leave_home_hour": 8,
+                "return_home_hour": 18,
+                "sleep_hour": 22,
+                "wake_hour": 6,
+            }
+            citizen["activity"] = "resting"
+        citizen["identity"] = default_identity(citizen_id)
     validate(candidate, require_private_events=True)
     return candidate
 
@@ -253,7 +337,13 @@ def write_snapshot(path, state):
 
 
 class World:
-    def __init__(self, save_path):
+    def __init__(
+        self,
+        save_path,
+        ai_brains=None,
+        ai_timeout_seconds=AI_TIMEOUT_SECONDS,
+        ai_reply_cooldown_ticks=AI_REPLY_COOLDOWN_TICKS,
+    ):
         self._path = Path(save_path)
         self._lock = threading.RLock()
         if self._path.exists():
@@ -265,12 +355,34 @@ class World:
         else:
             self._state = starter_world()
             self.save()
+        if ai_brains is None:
+            ai_brains = {}
+        if not isinstance(ai_brains, dict):
+            raise ValueError("AI brains must be a dictionary")
+        if any(
+            citizen_id not in self._state["citizens"] or not callable(getattr(brain, "decide", None))
+            for citizen_id, brain in ai_brains.items()
+        ):
+            raise ValueError("Invalid citizen AI brain configuration")
+        if (
+            isinstance(ai_timeout_seconds, bool)
+            or not isinstance(ai_timeout_seconds, (int, float))
+            or not math.isfinite(ai_timeout_seconds)
+            or ai_timeout_seconds <= 0
+        ):
+            raise ValueError("AI timeout must be positive")
+        if type(ai_reply_cooldown_ticks) is not int or ai_reply_cooldown_ticks < 1:
+            raise ValueError("AI reply cooldown must be a positive integer")
+        self._ai_brains = dict(ai_brains)
+        self._ai_timeout_seconds = float(ai_timeout_seconds)
+        self._ai_reply_cooldown_ticks = ai_reply_cooldown_ticks
 
     def snapshot(self):
         """Return an isolated public copy with all private social state removed."""
         with self._lock:
             public = copy.deepcopy(self._state)
             public.pop("private_social", None)
+            public.pop("private_ai", None)
             return public
 
     def citizen_context(self, citizen_id):
@@ -462,7 +574,180 @@ class World:
                 if action is not None:
                     self.act(**action)
 
-    def act(self, actor_id, action_name, target_id=None, message=None, params=None):
+    def _ai_reply_is_ready(self, citizen_id, actor_id):
+        with self._lock:
+            last_tick = (
+                self._state.get("private_ai", {})
+                .get(citizen_id, {})
+                .get("last_reply_tick_by_actor", {})
+                .get(actor_id)
+            )
+            return (
+                last_tick is None
+                or self._state["clock"]["tick"] - last_tick >= self._ai_reply_cooldown_ticks
+            )
+
+    def _build_ai_request(self, citizen_id, actor_id, incoming_event_id):
+        """Build a detached request containing only this citizen's knowledge."""
+        with self._lock:
+            citizen = self._state["citizens"][citizen_id]
+            actor = self._state["citizens"][actor_id]
+            location = self._state["locations"][citizen["location_id"]]
+            social = copy.deepcopy(
+                self._state.get("private_social", {}).get(
+                    citizen_id, {"memories": [], "relationships": {}, "beliefs": {}}
+                )
+            )
+            incoming = next(
+                memory for memory in reversed(social["memories"])
+                if memory["id"] == incoming_event_id
+            )
+            social["memories"] = social["memories"][-MAX_AI_CONTEXT_MEMORIES:]
+            known_subject_ids = set(social["relationships"]) | set(social["beliefs"])
+            known_subject_ids.update(
+                memory["subject_id"]
+                for memory in social["memories"]
+                if "subject_id" in memory
+            )
+            allowed_subject_ids = sorted(known_subject_ids - {actor_id})
+            incoming_details = {
+                "speaker": {"id": actor_id, "name": actor["name"]},
+                "message": incoming["message"],
+                "intent": incoming["intent"],
+            }
+            if "subject_id" in incoming:
+                subject_id = incoming["subject_id"]
+                incoming_details["subject"] = {
+                    "id": subject_id,
+                    "name": self._state["citizens"][subject_id]["name"],
+                }
+            return {
+                "citizen": {
+                    "id": citizen_id,
+                    "name": citizen["name"],
+                    "identity": copy.deepcopy(citizen["identity"]),
+                    "location": {
+                        "id": citizen["location_id"],
+                        "name": location["name"],
+                        "kind": location["kind"],
+                    },
+                    "activity": citizen["activity"],
+                    "needs": copy.deepcopy(citizen["needs"]),
+                },
+                "world": {
+                    "tick": self._state["clock"]["tick"],
+                    "hour": self._state["clock"]["tick"] % HOURS_PER_DAY,
+                },
+                "incoming": incoming_details,
+                "private_context": social,
+                "allowed_actions": [
+                    {"action": "none"},
+                    {
+                        "action": "talk",
+                        "target_id": actor_id,
+                        "message_max_length": MAX_MESSAGE_LENGTH,
+                        "intents": sorted(TALK_INTENTS - REPORT_INTENTS),
+                        "report_intents": sorted(REPORT_INTENTS),
+                        "report_subject_ids": allowed_subject_ids,
+                    },
+                ],
+            }
+
+    def _call_ai_brain(self, brain, request):
+        """Return provider output or None after a strict wall-clock timeout."""
+        results = queue.Queue(maxsize=1)
+
+        def decide():
+            try:
+                results.put((True, brain.decide(copy.deepcopy(request))))
+            except BaseException:
+                results.put((False, None))
+
+        thread = threading.Thread(target=decide, daemon=True, name="citizen-ai-brain")
+        thread.start()
+        try:
+            succeeded, response = results.get(timeout=self._ai_timeout_seconds)
+        except queue.Empty:
+            return None
+        return copy.deepcopy(response) if succeeded else None
+
+    @staticmethod
+    def _validate_ai_response(response, allowed_subject_ids):
+        if not isinstance(response, dict) or response == {"action": "none"}:
+            return None
+        if response.get("action") != "talk":
+            return None
+        intent = response.get("intent")
+        message = response.get("message")
+        if (
+            intent not in TALK_INTENTS
+            or not isinstance(message, str)
+            or not message.strip()
+            or len(message) > MAX_MESSAGE_LENGTH
+        ):
+            return None
+        if intent in REPORT_INTENTS:
+            if set(response) != {"action", "message", "intent", "subject_id"}:
+                return None
+            if response["subject_id"] not in allowed_subject_ids:
+                return None
+            return message, {"intent": intent, "subject_id": response["subject_id"]}
+        if set(response) != {"action", "message", "intent"}:
+            return None
+        return message, {"intent": intent}
+
+    def _maybe_ai_reply(self, actor_id, citizen_id, incoming_event_id):
+        brain = self._ai_brains.get(citizen_id)
+        if brain is None or not self._ai_reply_is_ready(citizen_id, actor_id):
+            return
+        try:
+            request = self._build_ai_request(citizen_id, actor_id, incoming_event_id)
+            response = self._call_ai_brain(brain, request)
+            allowed_subject_ids = request["allowed_actions"][1]["report_subject_ids"]
+            reply = self._validate_ai_response(response, allowed_subject_ids)
+            if reply is None:
+                return
+            reply_message, reply_params = reply
+            self.act(
+                citizen_id,
+                "talk",
+                actor_id,
+                reply_message,
+                reply_params,
+                _ai_reply_to=actor_id,
+            )
+        except Exception:
+            # The incoming talk is already committed. AI is strictly best-effort.
+            return
+
+    def act(
+        self,
+        actor_id,
+        action_name,
+        target_id=None,
+        message=None,
+        params=None,
+        *,
+        _ai_reply_to=None,
+    ):
+        """Validate and atomically apply an action shared by every kind of caller."""
+        event = self._commit_action(
+            actor_id, action_name, target_id, message, params, _ai_reply_to=_ai_reply_to
+        )
+        if action_name == "talk" and _ai_reply_to is None:
+            self._maybe_ai_reply(actor_id, target_id, event["id"])
+        return event
+
+    def _commit_action(
+        self,
+        actor_id,
+        action_name,
+        target_id=None,
+        message=None,
+        params=None,
+        *,
+        _ai_reply_to=None,
+    ):
         """Validate and atomically apply an action shared by every kind of caller."""
         with self._lock:
             citizens = self._state["citizens"]
@@ -471,6 +756,8 @@ class World:
             if not isinstance(action_name, str) or action_name not in {"talk", "move"}:
                 raise ValueError("Unsupported action")
             if action_name == "move":
+                if _ai_reply_to is not None:
+                    raise ValueError("Move cannot be an AI reply")
                 if not isinstance(target_id, str) or target_id not in self._state["locations"]:
                     raise ValueError("Unknown destination")
                 if message is not None:
@@ -512,6 +799,21 @@ class World:
                 raise ValueError("Unknown target")
             if actor_id == target_id:
                 raise ValueError("A citizen cannot target themselves with talk")
+            if _ai_reply_to is not None:
+                if _ai_reply_to != target_id:
+                    raise ValueError("AI reply target does not match")
+                last_tick = (
+                    self._state.get("private_ai", {})
+                    .get(actor_id, {})
+                    .get("last_reply_tick_by_actor", {})
+                    .get(target_id)
+                )
+                if (
+                    last_tick is not None
+                    and self._state["clock"]["tick"] - last_tick
+                    < self._ai_reply_cooldown_ticks
+                ):
+                    raise ValueError("AI reply is on cooldown")
             if not isinstance(message, str) or not message.strip():
                 raise ValueError("Message must contain text")
             if len(message) > MAX_MESSAGE_LENGTH:
@@ -580,6 +882,11 @@ class World:
                 "details": {},
             }
             candidate["events"].append(event)
+            if _ai_reply_to is not None:
+                ai_state = candidate.setdefault("private_ai", {}).setdefault(
+                    actor_id, {"last_reply_tick_by_actor": {}}
+                )
+                ai_state["last_reply_tick_by_actor"][target_id] = tick
             validate(candidate, require_private_events=True)
             write_snapshot(self._path, candidate)
             self._state = candidate

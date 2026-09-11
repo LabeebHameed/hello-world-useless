@@ -173,7 +173,7 @@ class DailyLifeTests(unittest.TestCase):
         self.path.write_text(json.dumps(old), encoding="utf-8")
 
         migrated = World(self.path)
-        self.assertEqual(migrated.snapshot()["schema_version"], 3)
+        self.assertEqual(migrated.snapshot()["schema_version"], 4)
         self.assertEqual(
             migrated.citizen_context("citizen-2")["relationships"]["citizen-1"]["trust"],
             1,

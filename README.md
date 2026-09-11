@@ -60,8 +60,18 @@ python3 -m unittest discover -s tests -v
 - Private recipient memories, limited beliefs, and bounded relationship values.
 - Bounded hunger and energy, a regular destination, a daily schedule, and visible activity.
 - Deterministic citizens who travel to the shop, return home, rest, and sleep.
+- Optional runtime-injected AI brains that may produce one validated reply to an incoming message.
+- Persisted citizen traits, a personal goal, speaking style, and private per-pair reply cooldowns.
 
 Public snapshots never expose private social state. Trusted server code can call `citizen_context(citizen_id)` for one citizen's detached private context.
+
+AI providers implement the small `CitizenBrain.decide(request)` interface and are injected at runtime:
+
+```python
+world = World("data/world.json", ai_brains={"citizen-2": provider})
+```
+
+The request contains only that citizen's scoped context and allowed actions. Provider objects, credentials, model names, prompts, and timeout settings are not saved. With no injected brain, behavior is unchanged.
 
 ## Development Timeline
 
@@ -69,8 +79,8 @@ Public snapshots never expose private social state. Trusted server code can call
 - [x] Phase 1 — World foundation
 - [x] Phase 2 — Shared social action, private memory, and relationships
 - [x] Phase 3 — Everyday life and motives
-- [ ] Phase 4 — Deeper memory and relationships
-- [ ] Phase 5 — AI decisions
+- [x] Phase 4 — AI conversation and decisions
+- [ ] Phase 5 — Deeper memory and relationships
 - [ ] Phase 6 — Browser view
 - [ ] Phase 7 — Human participation
 
@@ -79,6 +89,7 @@ Detailed checkpoints:
 - [Phase 1 handoff](docs/phases/phase-1.md)
 - [Phase 2 handoff](docs/phases/phase-2.md)
 - [Phase 3 handoff](docs/phases/phase-3.md)
+- [Phase 4 handoff](docs/phases/phase-4.md)
 
 ## Project Documentation
 
