@@ -6,7 +6,7 @@
 ---
 
 ## Basic Details
-### Team Name: Autonomous Overthinkers
+### Team Name: Individual
 
 
 ### Team Members
@@ -198,25 +198,16 @@ flowchart TD
 
 *Architecture Workflow: The authoritative 20 Hz simulation evaluates spatial motion and presence-based institutions on a locked thread, while cognitive LLM inferences are dispatched asynchronously through `CitizenScheduler` without ever stalling physics.*
 
----
-
-#### For Hardware:
-*(N/A — Pure software simulation. Built 100% in software and runs entirely on consumer silicon; no physical hardware, breadboards, or circuits required.)*
 
 ---
 
 ### Project Demo
 
 # Video
-[Add your demo video link here]
+[Demo Vedio](https://drive.google.com/file/d/1RdP546C4d-g2eZuVtpfEHoKe-zohqXcg/view?usp=drive_link)
 *Demonstration Walkthrough: A video tour highlighting the initial spawn in Old Town, walking along Willow Avenue, verifying doctor attendance inside Willow Hospital, reviewing an incident report at the Police Station, and holding a live AI conversation with a citizen to receive the ultimate "Hello World".*
 
-# Additional Demos
-- **Interactive Live Instance:** Can be launched locally on any machine with `python3 server.py`.
-- **Headless Benchmarking Harness:** Run `python3 server.py --headless` to watch 50 agents navigate the town at 10x real-time speed.
-- **Automated Test Validation:** Run `python3 -m unittest discover -s tests -v` to observe 90 deterministic test cases verifying spatial physics, attendance math, and memory isolation.
 
----
 
 ## Performance & Engineering Benchmarks
 
