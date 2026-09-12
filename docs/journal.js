@@ -378,48 +378,115 @@ function initSimulationCanvas() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Interactive Bonsai-27B Dialogue Sandbox
+// 5. Interactive Bonsai-27B Dialogue Sandbox (Live Local LLM Integration)
 // ---------------------------------------------------------------------------
-const AI_RESPONSES = {
-  "hello world": {
-    dialogue: "Hello World! I was just recording historical archives at Town Hall. Did you really walk all the way across Willow Avenue just to hear that? Brian Kernighan would be proud.",
-    emotion: "content",
-    plan: "Review historical municipal records",
-    speed: "19.08s (0 reasoning tokens)"
-  },
-  "why": {
-    dialogue: "Because printing to a cold, uncaring terminal is unearned civic privilege. In Willow, every word has biological weight, schedule commitments, and hospital coverage.",
-    emotion: "thoughtful",
-    plan: "Walk to Juniper Café for tea",
-    speed: "18.42s (JSON Schema validated)"
-  },
-  "doctor": {
-    dialogue: "Dr. Jonah Reed is currently at Willow Hospital reviewing shifts. Because he physically walked to work today, trauma care is mathematically operational!",
-    emotion: "reassured",
-    plan: "Verify hospital attendance ledger",
-    speed: "17.90s (Presence verified)"
-  },
-  "kernighan": {
-    dialogue: "Brian Kernighan introduced printf in 1974 without consulting local municipal zoning laws or checking citizen energy levels. We have spent 10,000 lines rectifying this oversight.",
-    emotion: "amused",
-    plan: "File historical report at precinct",
-    speed: "19.55s (Zero hallucination)"
-  },
-  "default": {
-    dialogue: "Good day! It's a brisk morning in Old Town. Have you inspected the attendance ledger at Willow Hospital or noticed our 1.13 ms spatial clearance physics?",
-    emotion: "friendly",
-    plan: "Continue routine patrol",
-    speed: "18.15s (Bonsai 27B)"
-  }
+let localLLM = {
+  connected: false,
+  model: null,
+  baseUrl: 'http://127.0.0.1:1234/v1'
 };
+
+async function probeLocalLLM(customUrl = null) {
+  const badge = document.getElementById('llm-status-badge');
+  const endpointDisplay = document.getElementById('llm-endpoint-display');
+  const probeBtn = document.getElementById('probe-llm-btn');
+  
+  if (badge) {
+    badge.textContent = 'PROBING LOCAL LLM...';
+    badge.className = 'badge badge-pink';
+  }
+  if (probeBtn) {
+    probeBtn.disabled = true;
+    probeBtn.textContent = 'Probing...';
+  }
+
+  const testUrls = customUrl ? [customUrl.replace(/\/$/, '')] : [
+    'http://127.0.0.1:1234/v1',
+    'http://localhost:1234/v1'
+  ];
+
+  let detected = null;
+  for (const base of testUrls) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 2000);
+      const res = await fetch(`${base}/models`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const data = await res.json();
+        const models = (data.data || []).map(m => m.id);
+        const chatModels = models.filter(m => !/embed|bge|nomic/i.test(m));
+        const chosen = chatModels[0] || models[0] || 'bonsai-27b';
+        detected = { model: chosen, baseUrl: base };
+        break;
+      }
+    } catch (_) {
+      // Endpoint offline or unreachable
+    }
+  }
+
+  if (detected) {
+    localLLM.connected = true;
+    localLLM.model = detected.model;
+    localLLM.baseUrl = detected.baseUrl;
+    if (badge) {
+      badge.textContent = `● LOCAL LLM: ${localLLM.model}`;
+      badge.className = 'badge badge-green';
+    }
+    if (endpointDisplay) {
+      endpointDisplay.textContent = `${localLLM.baseUrl} (${localLLM.model})`;
+    }
+  } else {
+    localLLM.connected = false;
+    localLLM.model = null;
+    localLLM.baseUrl = customUrl || 'http://127.0.0.1:1234/v1';
+    if (badge) {
+      badge.textContent = '○ NO LOCAL LLM DETECTED';
+      badge.className = 'badge badge-pink';
+    }
+    if (endpointDisplay) {
+      endpointDisplay.textContent = `${localLLM.baseUrl} (Offline)`;
+    }
+  }
+
+  if (probeBtn) {
+    probeBtn.disabled = false;
+    probeBtn.textContent = 'Detect';
+  }
+  return localLLM.connected;
+}
 
 function initDialogueSimulator() {
   const form = document.getElementById('chat-input-form');
   const input = document.getElementById('chat-input-field');
   const chatBox = document.getElementById('chat-box');
   const samplePills = document.querySelectorAll('.sample-pill');
+  const configToggle = document.getElementById('llm-config-toggle');
+  const configDrawer = document.getElementById('llm-config-drawer');
+  const probeBtn = document.getElementById('probe-llm-btn');
+  const customUrlInput = document.getElementById('custom-llm-input');
 
   if (!form || !input || !chatBox) return;
+
+  // Probe local LLM immediately upon initialization
+  probeLocalLLM();
+
+  if (configToggle && configDrawer) {
+    configToggle.addEventListener('click', () => {
+      configDrawer.style.display = configDrawer.style.display === 'none' ? 'block' : 'none';
+    });
+  }
+
+  if (probeBtn && customUrlInput) {
+    probeBtn.addEventListener('click', () => {
+      const url = customUrlInput.value.trim();
+      if (url) probeLocalLLM(url);
+    });
+  }
 
   function appendMessage(speaker, text, tag, isAi = false, metadata = null) {
     const bubble = document.createElement('div');
@@ -449,7 +516,7 @@ function initDialogueSimulator() {
     chatBox.scrollTop = chatBox.scrollHeight;
   }
 
-  function handleSend(userText) {
+  async function handleSend(userText) {
     const clean = userText.trim();
     if (!clean) return;
 
@@ -457,33 +524,89 @@ function initDialogueSimulator() {
     appendMessage('You', clean, 'Human Player', false);
     input.value = '';
 
+    if (!localLLM.connected) {
+      // Re-probe just in case user recently booted LM Studio
+      const rechecked = await probeLocalLLM(localLLM.baseUrl);
+      if (!rechecked) {
+        sfx.fart();
+        appendMessage(
+          'Simulation Engine',
+          `⚠️ No local LLM detected at ${localLLM.baseUrl}. Start LM Studio on port 1234 (with a model loaded like Bonsai-27B) to enable real-time citizen reasoning. Without a local LLM, town citizen dialogue is inactive.`,
+          'Offline State',
+          false,
+          { emotion: 'unpowered', plan: 'Awaiting local neural engine', speed: 'No connection' }
+        );
+        return;
+      }
+    }
+
     // Show "considering a reply..." thinking status
     const thinkingBubble = document.createElement('div');
     thinkingBubble.className = 'chat-bubble ai';
     thinkingBubble.id = 'thinking-bubble';
     thinkingBubble.innerHTML = `
       <span class="speaker-tag">Ada [Neighborhood Historian]</span>
-      <p style="font-style:italic; color:#777;">Thinking via Bonsai-27B (reasoning='off', JSON schema check)...</p>
+      <p style="font-style:italic; color:#777;">Thinking via ${localLLM.model} (Live inference)...</p>
     `;
     chatBox.appendChild(thinkingBubble);
     chatBox.scrollTop = chatBox.scrollHeight;
 
-    // Simulate async neural response
-    setTimeout(() => {
+    const startTime = performance.now();
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 45000);
+      const res = await fetch(`${localLLM.baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: localLLM.model,
+          messages: [
+            {
+              role: 'system',
+              content: "You are Ada, the neighborhood historian in the living town of Willow. You speak with warm, understated wit. Willow is an authoritative living town of 50 citizens with strict 20 Hz spatial physics, schedules, and biological constraints. The human player has walked all the way across town to earn their 'Hello World'. Answer their question in character in 1-3 sentences. Mention actual Willow places (Willow Hospital, Town Hall, Juniper Café, Morning Loaf bakery) and citizen routines where appropriate. Stay strictly in character."
+            },
+            {
+              role: 'user',
+              content: clean
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 160
+        }),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
       const target = document.getElementById('thinking-bubble');
       if (target) target.remove();
 
-      const lower = clean.toLowerCase();
-      let matchKey = 'default';
-      if (lower.includes('hello')) matchKey = 'hello world';
-      else if (lower.includes('why') || lower.includes('stdout')) matchKey = 'why';
-      else if (lower.includes('doctor') || lower.includes('hospital') || lower.includes('reed')) matchKey = 'doctor';
-      else if (lower.includes('kernighan') || lower.includes('1974') || lower.includes('crime')) matchKey = 'kernighan';
+      if (!res.ok) {
+        throw new Error(`LLM returned status ${res.status}`);
+      }
 
-      const resp = AI_RESPONSES[matchKey];
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content?.trim() || "Good day! I was just reflecting on our town archives.";
+      const elapsed = (performance.now() - startTime) / 1000;
+
       sfx.poke();
-      appendMessage('Ada', resp.dialogue, 'Bonsai-27B Resident', true, resp);
-    }, 750);
+      appendMessage('Ada', reply, `${localLLM.model} Resident`, true, {
+        emotion: 'engaged',
+        plan: 'Update Willow historical registry',
+        speed: `${elapsed.toFixed(2)}s (Live Local LLM)`
+      });
+    } catch (err) {
+      const target = document.getElementById('thinking-bubble');
+      if (target) target.remove();
+
+      sfx.fart();
+      appendMessage(
+        'Simulation Engine',
+        `⚠️ Local inference error: ${err.message}. Ensure LM Studio has CORS enabled and the model is loaded.`,
+        'Error',
+        false,
+        { emotion: 'troubled', plan: 'Resolve local connection', speed: 'Failed' }
+      );
+    }
   }
 
   form.addEventListener('submit', (e) => {

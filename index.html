@@ -218,10 +218,22 @@
       <div class="dialogue-simulator">
         <div class="canvas-header">
           <div>
-            <span class="badge badge-pink">LOCAL BONSAI-27B REASONING</span>
+            <span id="llm-status-badge" class="badge badge-pink">PROBING LOCAL LLM...</span>
             <h3 style="font-size:1.2rem; margin-top:4px;">Citizen Cognitive Sandbox</h3>
           </div>
-          <span class="font-mono" style="font-size:0.75rem; color:#888;">reasoning="off" · JSON Schema</span>
+          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px;">
+            <span id="llm-endpoint-display" class="font-mono" style="font-size:0.75rem; color:#888;">http://127.0.0.1:1234/v1</span>
+            <button id="llm-config-toggle" class="badge badge-white" style="font-size:0.65rem; padding:2px 8px; cursor:pointer;" type="button">Config Endpoint</button>
+          </div>
+        </div>
+
+        <div id="llm-config-drawer" style="display:none; background:#12161B; border:1px solid #222; border-radius:8px; padding:12px; margin:8px 0 14px;">
+          <label for="custom-llm-input" style="font-size:0.75rem; font-family:var(--font-mono); color:#aaa; display:block; margin-bottom:6px;">Local LLM Endpoint (LM Studio / Ollama):</label>
+          <div style="display:flex; gap:8px;">
+            <input type="url" id="custom-llm-input" value="http://127.0.0.1:1234/v1" placeholder="http://127.0.0.1:1234/v1" style="flex:1; background:#0A0D10; border:1px solid #333; color:#eee; font-family:var(--font-mono); font-size:0.8rem; padding:8px 12px; border-radius:6px;">
+            <button id="probe-llm-btn" type="button" class="brutal-btn accent-green" style="padding:6px 14px; font-size:0.75rem;">Detect</button>
+          </div>
+          <small style="color:#777; font-size:0.7rem; display:block; margin-top:6px;">Ensure LM Studio local server is running on :1234 with CORS enabled in Settings.</small>
         </div>
 
         <div id="chat-box" class="chat-box">
