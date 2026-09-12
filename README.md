@@ -1,6 +1,6 @@
 <img width="1280" height="640" alt="git (1)" src="https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd" />
 
-# Hello World 🎯
+# Hello World 
 > *The Most Absurdly Over-Engineered "Hello World" in Computational History — An Authoritative 20 Hz Spatial Physics Simulation, 50 Autonomous Living AI Citizens, and Local Neural Cognitive Engine Just to Hear a Single Greeting.*
 
 ---
@@ -10,9 +10,7 @@
 
 
 ### Team Members
-- Team Lead: Labeeb Hameed
-- Member 2: Appu Kurian (Kuriyaappi)
-- Member 3: Arundhathi Krishna
+- Solo Maker: Labeeb Hameed
 
 [![Project Journal](https://img.shields.io/badge/📖_Project_Journal-Read_The_Story-ea34df?style=for-the-badge)](https://labeebhameed.github.io/hello-world-useless/)
 [![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-Deployed-2ecc71?style=for-the-badge)](https://labeebhameed.github.io/hello-world-useless/)
@@ -296,9 +294,7 @@ To ensure this project sets a new standard for computational rigor in a "useless
 ---
 
 ## Team Contributions
-- **Labeeb Hameed (Team Lead):** Architectural design, authoritative 20 Hz simulation engine (`world.py`), spatial collision grid, continuous raycast clearance navigation (`spatial.py`), and municipal town layout (`town.py`).
-- **Appu Kurian (Kuriyaappi):** Cognitive character architecture, asynchronous bounded scheduler (`citizen_scheduler.py`), LM Studio JSON schema validator (`ai_reasoning.py`), and `FastCitizenBrain` heuristic fallback.
-- **Arundhathi Krishna:** Presence-based civic institutions engine (`institutions.py`), attendance ledgers, vanilla HTML5 Canvas renderer (`renderer.js`), camera tracking, and interactive browser client (`app.js`).
+- **Labeeb Hameed (Solo Maker & Architect):** Entire end-to-end implementation—authoritative 20 Hz simulation engine (`world.py`), spatial collision grid & raycast clearance navigation (`spatial.py`), municipal town layout (`town.py`), local LM Studio neural cognitive reasoning & scheduler (`ai_reasoning.py`, `citizen_scheduler.py`, `fast_brain.py`, `lm_studio.py`), presence-based civic institutions engine (`institutions.py`), and HTML5 Canvas 2D client (`renderer.js`, `app.js`).
 
 ---
 Made with ❤️ at TinkerHub Useless Projects 
