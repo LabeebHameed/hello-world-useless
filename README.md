@@ -110,14 +110,14 @@ python3 server.py --save data/custom-town.json --port 8080
 python3 -m unittest discover -s tests -v
 ```
 
-**Optional Local Neural Reasoning (LM Studio):**
+** Local Neural Reasoning (LM Studio):**
 ```sh
 # Point to your local LM Studio instance for 27B-parameter citizen thoughts
 export WILLOW_AI_MODEL="prism-ml/bonsai-27b"
 export WILLOW_AI_BASE_URL="http://localhost:1234/v1"
 python3 server.py
 ```
-*(If LM Studio is offline, Willow seamlessly falls back to the deterministic `FastCitizenBrain`, ensuring the town never freezes).*
+*(If LM Studio is offline, It seamlessly falls back to the deterministic `FastCitizenBrain`, ensuring the town never freezes).*
 
 ---
 
