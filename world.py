@@ -724,13 +724,8 @@ class World(SpatialWorldMixin):
                         handled = True
 
                 if not handled:
-                    decision_state = copy.deepcopy(self._state)
-                    social = copy.deepcopy(
-                        self._state.get("private_social", {}).get(
-                            citizen_id, {"memories": [], "relationships": {}, "beliefs": {}}
-                        )
-                    )
-                    action = self.choose_action(decision_state, citizen_id, social)
+                    social = self._state.get("private_social", {}).get(citizen_id)
+                    action = self.choose_action(self._state, citizen_id, social)
                     if action is not None:
                         self.act(**action)
 
@@ -741,13 +736,8 @@ class World(SpatialWorldMixin):
                 c = self._state["citizens"][cid]
                 if c.get("control") == "human" or c.get("route"):
                     continue
-                decision_state = copy.deepcopy(self._state)
-                social = copy.deepcopy(
-                    self._state.get("private_social", {}).get(
-                        cid, {"memories": [], "relationships": {}, "beliefs": {}}
-                    )
-                )
-                action = self.choose_action(decision_state, cid, social)
+                social = self._state.get("private_social", {}).get(cid)
+                action = self.choose_action(self._state, cid, social)
                 if action is not None:
                     try:
                         self.act(**action)

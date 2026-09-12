@@ -6,6 +6,7 @@ let map,renderer,physics,state,token,player,sequence=0,connected=false,lastState
 let target=null,goal=null,nearCitizen=null,nearBuilding=null,lastInput='',sending=false;
 let renderedActors=[],frames=[],lastFrame=performance.now(),lastMini=0,lastUI=0,toastTimer;
 let correction={x:0,y:0},inputHistory=[],inputRTT=40;
+let llmState={connected:false,model:null,base_url:null};
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 const movementKeys=new Set(['w','a','s','d','arrowup','arrowleft','arrowdown','arrowright']);
 const pressedAt=new Map();
@@ -35,9 +36,47 @@ const descriptions={
   'home-2':'Cleo’s home. Her daily routine brings her home to rest. Building interiors are not open.'
 };
 
+function formatModel(name){
+  if(!name)return 'Active';
+  const last=name.split('/').pop();
+  return last.replace(/[-_]/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+}
+
+function updateLLMStatus(info){
+  if(info)llmState={...llmState,...info};
+  const dot=$('llm-dot'),label=$('llm-label');
+  const dDot=$('llm-dialog-dot'),dTitle=$('llm-dialog-title');
+  const dModel=$('llm-dialog-model'),dUrl=$('llm-dialog-url');
+  if(!dot||!label)return;
+  if(llmState.connected&&llmState.model){
+    dot.textContent='●';dot.className='llm-dot online';
+    label.textContent=`LLM: ${formatModel(llmState.model)}`;
+    if(dDot){
+      dDot.textContent='●';dDot.className='llm-dot online';
+      dTitle.textContent='Local LLM Active';
+      dModel.textContent=`Model: ${llmState.model}`;
+      dUrl.innerHTML=`Endpoint: <code>${llmState.base_url||'http://127.0.0.1:1234/v1'}</code>`;
+    }
+  }else{
+    dot.textContent='○';dot.className='llm-dot offline';
+    label.textContent='No Local LLM';
+    if(dDot){
+      dDot.textContent='○';dDot.className='llm-dot offline';
+      dTitle.textContent='No Local LLM Detected';
+      dModel.textContent='LM Studio is currently offline or unreachable.';
+      dUrl.innerHTML=`Endpoint: <code>${llmState.base_url||'http://127.0.0.1:1234/v1'}</code>`;
+    }
+  }
+}
+
+function openLLMDialog(){
+  release();
+  $('llm-dialog').showModal();
+}
+
 function toast(text){$('toast').textContent=text;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,4500);}
 function direction(){
-  if(!connected||performance.now()-lastStateAt>700||target||$('town-map').open||$('place-dialog').open)return {x:0,y:0};
+  if(!connected||performance.now()-lastStateAt>700||target||$('town-map').open||$('place-dialog').open||$('llm-dialog').open)return {x:0,y:0};
   let x=Number(keys.has('d')||keys.has('arrowright'))-Number(keys.has('a')||keys.has('arrowleft'));
   let y=Number(keys.has('s')||keys.has('arrowdown'))-Number(keys.has('w')||keys.has('arrowup'));
   const length=Math.max(1,Math.hypot(x,y));return {x:x/length,y:y/length};
@@ -68,6 +107,7 @@ async function poll(){
     const received=performance.now();
     if(state&&next.server_time<state.server_time)return;
     state=next;lastStateAt=received;connected=true;$('connection').hidden=true;
+    if(state.llm)updateLLMStatus(state.llm);
     sequence=Math.max(sequence,state.ack);
     const authoritative=state.actors.find(a=>a.id===state.player_id);
     if(!player){player={...authoritative,position:{...authoritative.position}};renderer.follow(player.position,0,true);}
@@ -130,7 +170,7 @@ function updateUI(){
   const candidates=state.actors.filter(a=>a.id!==state.player_id).map(a=>({...a,gap:Math.hypot(p.x-a.position.x,p.y-a.position.y)})).filter(a=>a.gap<=86&&physics.clear(p,a.position)).sort((a,b)=>a.gap-b.gap);
   nearCitizen=candidates[0]||null;
   nearBuilding=map.buildings.find(b=>Math.hypot(p.x-b.entrance.x,p.y-b.entrance.y)<100);
-  $('prompt').hidden=Boolean(target||$('town-map').open||$('place-dialog').open)||(!nearCitizen&&!nearBuilding);
+  $('prompt').hidden=Boolean(target||$('town-map').open||$('place-dialog').open||$('llm-dialog').open)||(!nearCitizen&&!nearBuilding);
   $('prompt-text').textContent=nearCitizen?`Talk to ${nearCitizen.name}`:nearBuilding?nearBuilding.name:'';
   const injured=candidates.find(a=>a.activity==='needs_help');
   $('help-button').hidden=!injured;$('help-button').dataset.citizen=injured?.id||'';
@@ -169,7 +209,8 @@ async function renderMessages(){
   try{
     const {messages,pending}=await api(`/api/conversation?citizen=${encodeURIComponent(current.id)}`);
     if(target!==current)return;
-    $('reply-status').textContent=pending?`${current.name} is considering a reply… You can keep walking whenever you like.`:messages.at(-1)?.speaker_id===current.id?'Reply received.':state.ai_available.includes(current.id)?'No reply pending.':'AI replies are not configured.';
+    const hasAI=state.ai_available?.includes(current.id);
+    $('reply-status').textContent=pending?`${current.name} is considering a reply… You can keep walking whenever you like.`:messages.at(-1)?.speaker_id===current.id?'Reply received.':hasAI?'● Local LLM active. Ready to converse.':'○ No local LLM detected. Start LM Studio to enable AI replies.';
     const signature=messages.map(m=>m.id).join(',');if($('messages').dataset.signature===`${current.id}:${signature}`)return;
     $('messages').dataset.signature=`${current.id}:${signature}`;$('messages').replaceChildren();
     if(!messages.length){const p=document.createElement('p');p.className='empty-chat';p.textContent=`You’re standing with ${current.name}. Start a conversation.`;$('messages').append(p);}
@@ -182,7 +223,8 @@ async function openConversation(citizen){
   try{
     await action('engage',citizen.id);target=citizen;$('citizen-name').textContent=citizen.name;$('portrait').textContent=citizen.name[0];
     $('messages').dataset.signature='';$('messages').replaceChildren();$('message').value='';
-    $('reply-status').textContent=state.ai_available.includes(citizen.id)?'':'AI replies are not configured for this citizen.';
+    const hasAI=state.ai_available?.includes(citizen.id);
+    $('reply-status').textContent=hasAI?'● Local LLM active.':'○ No local LLM detected. Start LM Studio on http://127.0.0.1:1234 to enable AI.';
     $('conversation').showModal();$('message').focus();await renderMessages();
   }catch(error){toast(error.message);}
 }
@@ -195,7 +237,7 @@ $('talk-form').addEventListener('submit',async event=>{
   $('reply-status').textContent='Sending…';
   try{
     await action('talk',current.id,message);
-    if(target===current){$('message').value='';await renderMessages();$('reply-status').textContent=state.ai_available.includes(current.id)?'Message delivered. Replies depend on the citizen’s configured AI.':'Message delivered. AI replies are not configured.';}
+    if(target===current){$('message').value='';await renderMessages();$('reply-status').textContent=state.ai_available?.includes(current.id)?'Message delivered. Reply is generating…':'Message delivered. Citizen cannot reply (no local LLM connected).';}
   }catch(error){if(target===current)$('reply-status').textContent=error.message;}
   finally{sending=false;$('send').disabled=false;$('message').disabled=false;if(target===current)$('message').focus();}
 });
@@ -211,6 +253,24 @@ $('morning-button').onclick=async()=>{
 $('map-button').onclick=openMap;$('minimap-button').onclick=openMap;$('close-map').onclick=()=>$('town-map').close();
 $('town-map').addEventListener('close',()=>canvas.focus());
 $('close-place').onclick=()=>$('place-dialog').close();$('place-dialog').addEventListener('close',()=>canvas.focus());
+$('llm-button').onclick=openLLMDialog;$('close-llm').onclick=()=>$('llm-dialog').close();
+$('llm-dialog').addEventListener('close',()=>canvas.focus());
+$('llm-connect-form').onsubmit=async event=>{
+  event.preventDefault();
+  const url=$('llm-url-input').value.trim(),btn=$('llm-connect-btn');
+  btn.disabled=true;btn.textContent='Connecting…';
+  try{
+    const res=await api('/api/llm/connect',{base_url:url});
+    updateLLMStatus(res.result);
+    if(res.result?.connected){
+      toast(`Connected to ${res.result.model}! Citizens now think and converse with AI.`);
+      $('llm-dialog').close();
+    }else{
+      toast('Could not find chat model at this endpoint. Check that LM Studio is running.');
+    }
+  }catch(err){toast(`Connection failed: ${err.message}`);}
+  finally{btn.disabled=false;btn.textContent='Connect';}
+};
 $('interact-button').onclick=interact;
 $('help-button').onclick=async()=>{try{await action('assist',$('help-button').dataset.citizen);toast('Cleo is heading to Willow Hospital.');}catch(error){toast(error.message);}};
 $('report-button').onclick=async()=>{try{await action('report','police');$('report-button').hidden=true;$('service-result').textContent='Your witnessed account is recorded. No crime has been established.';}catch(error){$('service-result').textContent=error.message;}};
@@ -219,10 +279,10 @@ function zoom(amount){if(renderer){renderer.zoom=Math.max(.65,Math.min(1.5,rende
 $('zoom-out').onclick=()=>zoom(-.1);$('zoom-in').onclick=()=>zoom(.1);
 window.addEventListener('keydown',event=>{
   const key=event.key.toLowerCase();if(event.target.matches('textarea,input'))return;
-  if(movementKeys.has(key)){event.preventDefault();if(!$('town-map').open&&!$('place-dialog').open&&!target){keys.add(key);if(!event.repeat){pressedAt.set(key,performance.now());sendInput(true);}}return;}
+  if(movementKeys.has(key)){event.preventDefault();if(!$('town-map').open&&!$('place-dialog').open&&!$('llm-dialog').open&&!target){keys.add(key);if(!event.repeat){pressedAt.set(key,performance.now());sendInput(true);}}return;}
   if(event.repeat)return;
-  if(key==='m'&&!target&&!$('place-dialog').open){event.preventDefault();$('town-map').open?$('town-map').close():openMap();}
-  if(key==='e'&&!target&&!$('town-map').open&&!$('place-dialog').open){event.preventDefault();interact();}
+  if(key==='m'&&!target&&!$('place-dialog').open&&!$('llm-dialog').open){event.preventDefault();$('town-map').open?$('town-map').close():openMap();}
+  if(key==='e'&&!target&&!$('town-map').open&&!$('place-dialog').open&&!$('llm-dialog').open){event.preventDefault();interact();}
   if(key==='f'&&!target&&!$('help-button').hidden)$('help-button').click();
 });
 window.addEventListener('keyup',event=>{const key=event.key.toLowerCase();if(movementKeys.has(key)){
@@ -244,6 +304,7 @@ async function start(){
   $('retry').hidden=true;
   try{
     const [town,boot]=await Promise.all([api('/api/map'),api('/api/bootstrap')]);map=town;token=boot.token;state=boot.state;sequence=state.ack;
+    if(state.llm)updateLLMStatus(state.llm);
     renderer=new TownRenderer(canvas,map);physics=makePhysics(map);connected=true;lastStateAt=performance.now();
     player={...state.actors.find(a=>a.id===state.player_id)};player.position={...player.position};renderer.follow(player.position,0,true);
     frames=[{time:performance.now(),actors:state.actors}];

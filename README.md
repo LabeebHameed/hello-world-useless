@@ -127,70 +127,27 @@ python3 server.py
 
 # Screenshots (Add at least 3)
 
-### Screenshot 1: The Living 50-Citizen Town Canvas
-```
-+---------------------------------------------------------------------------------------------------+
-|  [Willow · A LIVING TOWN]               [10:45 AM - Sunny]             [Town Map (M)]             |
-|---------------------------------------------------------------------------------------------------|
-|                                              |                                                    |
-|         [Willow Hospital]                    |         [Civic Way]                                |
-|         (Dr. Jonah Reed: ON DUTY)            |              |                                     |
-|               |                              |              v                                     |
-|               v                              |         (Evan Cole: Patrol)                        |
-|       +----------------+                     |               o                                    |
-|       | [Player: You]  | -------- (Walks) -> |               |                                    |
-|       +----------------+                     |               |                                    |
-|                                              |               v                                    |
-|         [Juniper Café]                       |        [Corner Grocer]                             |
-|         (Mae Johnson: Brewing)               |        (Elena Cruz: Restocking)                    |
-|                                                                                                   |
-|---------------------------------------------------------------------------------------------------|
-|  YOU ARE IN: Old Town · Willow Avenue       | MINIMAP [ 12288 x 9216 ]  | CONTROLS: WASD to Walk  |
-+---------------------------------------------------------------------------------------------------+
-```
-![The Living Town Canvas](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Figure 1: Bird's-eye view of Willow rendered at 60 FPS on HTML5 Canvas. Depicts the player navigating between the Civic Quarter and Old Town while citizens traverse continuous clearance vectors toward their daily commitments.*
+### Screenshot 1: The Living 50-Citizen Town & Authoritative 20 Hz Simulation
+![The Living 50-Citizen Town](screenshots/WORLD.png)
+*Figure 1: High-framerate bird's-eye view of Willow rendered at 60 FPS on HTML5 Canvas. The player navigates the Civic Quarter along Willow Avenue between Willow Hospital, Green Cross Pharmacy, and Town Police. Named citizens (Samir Patel, Leila Noor, Ruth Bell, Evan Cole, Iris Park, Theo Moss, Leo Martin) actively walk along continuous clearance vectors toward their real-time commitments. The top HUD displays the circadian world clock (`Day 44 · 13:00`) and active neural reasoning status (`LLM: Bonsai 27b`), while the bottom-right minimap tracks all 50 residents across the 12,288 × 9,216 coordinate space.*
 
 ---
 
-### Screenshot 2: Presence-Based Institutional Verification
-```
-+---------------------------------------------------------------+
-|  AT THE ENTRANCE: Willow Hospital                             |
-|---------------------------------------------------------------|
-|  Status: OPEN AND ACTIVE                                      |
-|  On-Duty Medical Personnel: 2 (Dr. Jonah Reed, Nurse Mira Shah)|
-|  Current Hospital Bed Capacity: Normal Operations             |
-|                                                               |
-|  "Medical services and trauma care are active because staff   |
-|   physically walked to their shifts this morning."            |
-|                                                               |
-|  [Close (Esc)]                                                |
-+---------------------------------------------------------------+
-```
-![Institutional Presence Inspector](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Figure 2: Entrance inspection dialog for Willow Hospital. Unlike conventional game scripts that fake institutional availability, hospital care and police reporting are mathematically gated by physical citizen attendance ledgers.*
+### Screenshot 2: Real-Time Town Cartography & Destination Directory
+![Town Map Overlay](screenshots/MAP.png)
+*Figure 2: The interactive Town Map cartography modal (<kbd>M</kbd>) mapping Willow's vast 12,288 × 9,216 coordinate world across all seven municipal districts (Civic Quarter, Old Town, University Hill, West Gardens, Brookside, Station District, Common Grounds). Real-time coordinate pins track the player and all 50 citizens during their daily commutes, while the sidebar indexes 23 distinct municipal landmarks and presence-gated institutions.*
 
 ---
 
-### Screenshot 3: Autonomous Neural Character Dialogue ("Hello World!")
-```
-+-----------------------------------------------------------------------+
-|  IN CONVERSATION: Ada (Neighborhood Historian)                        |
-|-----------------------------------------------------------------------|
-|  [Ada]: Good day! It's a thoughtful morning to walk through Old Town. |
-|                                                                       |
-|  [You]: Hello World!                                                  |
-|                                                                       |
-|  [Ada]: (Considering reply via Bonsai-27B...)                          |
-|  [Ada]: "Hello World! I was just recording notes on the old town hall  |
-|          clock. Did you know the bells have kept time for 60 years?"   |
-|                                                                       |
-|  [Your message: __________________________________________]  [ Send ] |
-+-----------------------------------------------------------------------+
-```
-![Dialogue and Cognitive State Modal](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Figure 3: Interactive dialogue modal. Citizens dynamically construct contextual responses using their authored identity, occupation, speaking style, location, and private memories through local LLM inference.*
+### Screenshot 3: Contextual In-Character Citizen Dialogue
+![Citizen Conversation Modal](screenshots/TAKING.png)
+*Figure 3: Interactive dialogue session with Nurse Mira Shah outside Willow Hospital. When the player approaches and presses <kbd>E</kbd>, Mira synthesizes an authentic, contextual greeting in response to the player's greeting based on her authored identity, occupation, speaking style, location, and emotional state—the ultimate realization of an authoritative, living "Hello World".*
+
+---
+
+### Screenshot 4: Local Neural Brain Architecture (LM Studio / Bonsai-27B)
+![Local LLM Brain Configuration](screenshots/LOCAL%20LLM.png)
+*Figure 4: Local LLM Brain configuration panel connecting the simulation to a local LM Studio / OpenAI-compatible inference server running `prism-ml/bonsai-27b` at `http://127.0.0.1:1234/v1`. Citizens construct thoughts and memories 100% locally on personal hardware with zero cloud API keys or external data leakage, backed by the deterministic `FastCitizenBrain` for sub-millisecond offline execution.*
 
 ---
 
@@ -244,24 +201,7 @@ flowchart TD
 ---
 
 #### For Hardware:
-
-# Schematic & Circuit
-![Circuit](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Schematic Representation: Virtual circuit wiring of Willow's 12 municipal institutions, illustrating how power, staffing attendance lines, and citizen physical presence connect to the central simulation bus.*
-
-# Schematic & Circuit
-![Schematic](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Architectural Pinout: Spatial collision grid cell matrix (32x32 cell subdivisions) mapped across the 12,288 x 9,216 unit town canvas.*
-
-# Build Photos
-![Components](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Component Architecture: Overview of core software building blocks—`world.py`, `spatial.py`, `town.py`, `institutions.py`, `citizen_scheduler.py`, `fast_brain.py`, and `renderer.js`.*
-
-![Build](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Build Pipeline: 7-Phase iterative evolution—progressing from fundamental 2D grid coordinates (Phase 1) to multi-actor social actions (Phase 2), daily life schedules (Phase 3), local AI reasoning (Phases 4-6), and 50-citizen institutional consequences (Phase 7).*
-
-![Final](https://github.com/user-attachments/assets/8920b256-2ba8-4988-b824-5351134eb4bd)
-*Final Deployed Assembly: The fully operational Willow town simulation running seamlessly in a zero-dependency browser window at 60 FPS.*
+*(N/A — Pure software simulation. Built 100% in software and runs entirely on consumer silicon; no physical hardware, breadboards, or circuits required.)*
 
 ---
 

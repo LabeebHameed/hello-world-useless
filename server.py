@@ -72,6 +72,8 @@ def make_server(world, host="127.0.0.1", port=8000):
                     target = parse_qs(url.query).get("citizen",[None])[0]
                     self.reply(200,{"messages":world.conversation("player",target),
                                     "pending": bool(world._scheduler and world._scheduler.conversation_pending(target))})
+                elif url.path == "/api/llm/status":
+                    self.reply(200, getattr(world, "_ai_info", {"connected": bool(world._ai_brains), "model": None, "base_url": None}))
                 elif url.path in PUBLIC_FILES:
                     path = ROOT/PUBLIC_FILES[url.path]
                     self.reply(200,path.read_bytes(),MIME[path.suffix])
@@ -120,6 +122,9 @@ def make_server(world, host="127.0.0.1", port=8000):
                         result = {"ticks": ticks, "clock": world.snapshot()["clock"]}
                     else:
                         raise ValueError("Unsupported time action")
+                elif self.path == "/api/llm/connect":
+                    from lm_studio import setup_brains
+                    result = setup_brains(world, body.get("model"), body.get("base_url"))
                 else:
                     self.close_connection = True
                     return self.reply(404,{"error":"Not found"})
@@ -166,32 +171,18 @@ def main():
     world = World(args.save)
     from population import expand_population
     expand_population(world)
-    from fast_brain import FastCitizenBrain
-    if args.ai_model:
-        from lm_studio import LMStudioConfig, LMStudioBrain
-        native_off = args.ai_model == "prism-ml/bonsai-27b"
-        config = LMStudioConfig(model=args.ai_model, timeout=60, max_retries=0,
-                                max_tokens=160 if native_off else 512,
-                                native_reasoning_off=native_off)
-        brains = {}
-        for cid, c in world._state["citizens"].items():
-            if c.get("control") != "human":
-                brain = LMStudioBrain(config, cid)
-                brain.fallback_brain = FastCitizenBrain(cid)
-                brains[cid] = brain
-        world._ai_brains = brains
-        world._ai_gateway.brains = dict(brains)
-        print(f"Background AI configured: {args.ai_model}; {len(brains)} citizen contexts with fast fallback", flush=True)
-    else:
-        brains = {cid: FastCitizenBrain(cid) for cid, c in world._state["citizens"].items() if c.get("control") != "human"}
-        world._ai_brains = brains
-        world._ai_gateway.brains = dict(brains)
-        print(f"Fast in-character simulation active: {len(brains)} citizens conversational (sub-millisecond replies)", flush=True)
+    if not args.headless:
+        from lm_studio import setup_brains
+        llm_info = setup_brains(world, args.ai_model or None)
+        if llm_info["connected"]:
+            print(f"✓ Local LLM detected: {llm_info['model']} ({llm_info['base_url']}) — Full AI reasoning enabled", flush=True)
+        else:
+            print(f"○ No local LLM detected on http://127.0.0.1:1234 — Citizen AI replies disabled until local LLM starts", flush=True)
 
     world.start()
     current_tick = world._state["clock"]["tick"]
     current_hour = current_tick % 24
-    if args.morning or is_new or (current_hour >= 22 or current_hour < 7):
+    if args.morning or (not args.headless and (is_new or current_hour >= 22 or current_hour < 7)):
         target_tick = ((current_tick // 24) + (1 if current_hour >= 8 else 0)) * 24 + 8
         advance_ticks = target_tick - current_tick
         if advance_ticks > 0:

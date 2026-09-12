@@ -265,7 +265,8 @@ class SpatialWorldMixin:
                     "incident": visible_incident,
                     "services": copy.deepcopy(self._state.get("institutions", {})),
                     "observations": copy.deepcopy(self._state.get("private_knowledge",{}).get(player_id,[])[-8:]),
-                    "ai_available": sorted(self._ai_brains)}
+                    "ai_available": sorted(self._ai_brains),
+                    "llm": getattr(self, "_ai_info", {"connected": bool(self._ai_brains), "model": None, "base_url": None})}
 
     @staticmethod
     def _observe(state, citizen_id, text, place):
@@ -365,5 +366,5 @@ class SpatialWorldMixin:
             self._publish_candidate(candidate,persist=persist)
             if persist:
                 self._checkpoint_elapsed = 0
-            if self._state["clock"]["running"] and self._state["spatial"]["hour_elapsed"] >= HOUR_SECONDS:
+            while self._state["clock"]["running"] and self._state["spatial"]["hour_elapsed"] >= HOUR_SECONDS:
                 self._advance_one_tick(only_if_running=True, spatial_hour=True)

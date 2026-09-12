@@ -195,3 +195,68 @@ def create_brains_from_env(citizen_ids: List[str]) -> Dict[str, LMStudioBrain]:
     except Exception as e:
         logging.warning(f"Failed to configure LM Studio brains: {e}")
         return {}
+
+
+def detect_local_llm(base_url: Optional[str] = None) -> Optional[Dict[str, str]]:
+    """Probes local LLM endpoints (LM Studio, Ollama, etc.) to check if a local LLM is running.
+
+    Returns a dict {"model": str, "base_url": str} if an LLM is found, or None if offline.
+    """
+    candidates = []
+    if base_url:
+        candidates.append(base_url)
+    if "WILLOW_AI_BASE_URL" in os.environ:
+        candidates.append(os.environ["WILLOW_AI_BASE_URL"])
+    candidates.extend(["http://127.0.0.1:1234/v1", "http://localhost:1234/v1", "http://127.0.0.1:11434/v1"])
+
+    seen = set()
+    for url in candidates:
+        url = url.rstrip("/")
+        if url in seen:
+            continue
+        seen.add(url)
+        try:
+            opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+            req = urllib.request.Request(f"{url}/models", headers={"User-Agent": "WillowTown/1.0"})
+            with opener.open(req, timeout=0.4) as res:
+                data = json.loads(res.read().decode("utf-8"))
+                models = [m["id"] for m in data.get("data", [])]
+                chat_models = [m for m in models if not any(x in m.lower() for x in ("embed", "bge", "nomic"))]
+                chosen = chat_models[0] if chat_models else (models[0] if models else None)
+                if chosen:
+                    return {"model": chosen, "base_url": url}
+        except Exception:
+            continue
+    return None
+
+
+def setup_brains(world, model_name: Optional[str] = None, base_url: Optional[str] = None) -> Dict[str, Any]:
+    """Detect and configure brains on the world instance."""
+    info = None
+    if model_name:
+        info = {"model": model_name, "base_url": base_url or os.environ.get("WILLOW_AI_BASE_URL", "http://127.0.0.1:1234/v1")}
+    else:
+        info = detect_local_llm(base_url)
+
+    if info:
+        m = info["model"]
+        url = info["base_url"]
+        native_off = (m == "prism-ml/bonsai-27b")
+        config = LMStudioConfig(
+            model=m,
+            base_url=url,
+            timeout=60.0 if native_off else 8.0,
+            max_retries=0 if native_off else 1,
+            max_tokens=160 if native_off else 512,
+            native_reasoning_off=native_off,
+        )
+        brains = {cid: LMStudioBrain(config, cid) for cid, c in world._state["citizens"].items() if c.get("control") != "human"}
+        world._ai_brains = brains
+        world._ai_gateway.brains = dict(brains)
+        world._ai_info = {"connected": True, "model": m, "base_url": url}
+        return world._ai_info
+    else:
+        world._ai_brains = {}
+        world._ai_gateway.brains = {}
+        world._ai_info = {"connected": False, "model": None, "base_url": None}
+        return world._ai_info

@@ -1,0 +1,29 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/app.js",
+      "destination": "/web/app.js"
+    },
+    {
+      "source": "/renderer.js",
+      "destination": "/web/renderer.js"
+    },
+    {
+      "source": "/physics.js",
+      "destination": "/web/physics.js"
+    },
+    {
+      "source": "/style.css",
+      "destination": "/web/style.css"
+    },
+    {
+      "source": "/favicon.svg",
+      "destination": "/web/favicon.svg"
+    }
+  ]
+}
