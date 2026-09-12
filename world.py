@@ -9,22 +9,47 @@ import queue
 import tempfile
 import threading
 
+from spatial import SpatialWorldMixin, initialize_spatial, validate_spatial
+from town import TOWN, distance, destination_anchor, clear_segment
+
 
 MAX_MESSAGE_LENGTH = 500
 MAX_SOCIAL_VALUE = 5
 TALK_INTENTS = {"neutral", "confide", "encourage", "insult", "report_help", "report_harm"}
 REPORT_INTENTS = {"report_help", "report_harm"}
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 HOURS_PER_DAY = 24
 LOW_ENERGY = 25
 RESTED_ENERGY = 60
-ACTIVITIES = {"sleeping", "travelling", "resting", "at_regular_destination"}
+HIGH_HUNGER = 80
+ACTIVITIES = {"sleeping", "travelling", "resting", "at_regular_destination", "needs_help", "receiving_care"}
 MAX_IDENTITY_TEXT_LENGTH = 160
 MAX_TRAIT_LENGTH = 40
 MAX_PERSONALITY_TRAITS = 3
+MAX_IDENTITY_LIST_LENGTH = 5
+MAX_SHORT_TERM_GOALS = 3
+MAX_GOAL_TEXT_LENGTH = 120
 MAX_AI_CONTEXT_MEMORIES = 20
 AI_REPLY_COOLDOWN_TICKS = 1
 AI_TIMEOUT_SECONDS = 1.0
+EMOTIONAL_STATES = frozenset({
+    "content", "anxious", "happy", "sad", "angry",
+    "fearful", "curious", "tired", "grateful", "frustrated",
+})
+SOCIAL_TAGS = frozenset({
+    "friendly", "suspicious", "grateful", "angry",
+    "fearful", "interested", "dismissive",
+})
+SOCIAL_TAG_EFFECTS = {
+    "friendly": ("friendship", 1),
+    "suspicious": ("trust", -1),
+    "grateful": ("trust", 1),
+    "angry": ("anger", 1),
+    "fearful": None,
+    "interested": ("friendship", 1),
+    "dismissive": ("friendship", -1),
+}
+MAX_SOCIAL_TAGS_PER_RESPONSE = 3
 
 
 STARTER_IDENTITIES = {
@@ -45,6 +70,27 @@ STARTER_IDENTITIES = {
     },
 }
 
+STARTER_PROFILES = {
+    "citizen-1": {
+        "values": ["honesty", "community"],
+        "fears": ["being forgotten"],
+        "habits": ["morning walks", "greeting strangers"],
+        "long_term_goals": ["Understand the people in the neighborhood."],
+    },
+    "citizen-2": {
+        "values": ["stability", "self-reliance"],
+        "fears": ["disruption"],
+        "habits": ["keeping the house tidy"],
+        "long_term_goals": ["Keep home life stable and dependable."],
+    },
+    "citizen-3": {
+        "values": ["kindness", "reliability"],
+        "fears": ["letting people down"],
+        "habits": ["checking on neighbors"],
+        "long_term_goals": ["Become someone the neighborhood can rely on."],
+    },
+}
+
 
 def default_identity(citizen_id):
     return copy.deepcopy(STARTER_IDENTITIES.get(citizen_id, {
@@ -54,8 +100,17 @@ def default_identity(citizen_id):
     }))
 
 
+def default_profile(citizen_id, personal_goal="Build a steady life in the neighborhood."):
+    return copy.deepcopy(STARTER_PROFILES.get(citizen_id, {
+        "values": ["stability"],
+        "fears": ["uncertainty"],
+        "habits": ["daily routine"],
+        "long_term_goals": [personal_goal],
+    }))
+
+
 def starter_world():
-    return {
+    state = {
         "schema_version": SCHEMA_VERSION,
         "clock": {"tick": 0, "running": False},
         "locations": {
@@ -73,6 +128,7 @@ def starter_world():
                 "name": name, "location_id": home, "home_id": home,
                 "food": 0, "money": 100,
                 "identity": default_identity(f"citizen-{i}"),
+                **default_profile(f"citizen-{i}"),
                 "needs": {"hunger": 0, "energy": 100},
                 "schedule": {
                     "regular_destination_id": "shop",
@@ -82,6 +138,9 @@ def starter_world():
                     "wake_hour": 6,
                 },
                 "activity": "resting",
+                "current_plan": None,
+                "emotional_state": "content",
+                "short_term_goals": [],
             }
             for i, name, home in (
                 (1, "Ada", "home-1"), (2, "Ben", "home-1"), (3, "Cleo", "home-2")
@@ -90,6 +149,8 @@ def starter_world():
         "shop": {"location_id": "shop", "food": 30, "money": 0},
         "events": [{"id": 1, "tick": 0, "type": "world_created", "entity_ids": [], "details": {}}],
     }
+
+    return initialize_spatial(state)
 
 
 def validate(state, require_private_events=False):
@@ -101,7 +162,7 @@ def validate(state, require_private_events=False):
     def natural(value):
         return type(value) is int and value >= 0
 
-    require(state["schema_version"] in (1, 2, 3, 4), "Unsupported save schema")
+    require(state["schema_version"] in (1, 2, 3, 4, 5, 6), "Unsupported save schema")
     clock = state["clock"]
     require(natural(clock["tick"]) and type(clock["running"]) is bool, "Invalid clock")
     locations = state["locations"]
@@ -113,7 +174,7 @@ def validate(state, require_private_events=False):
         require(citizen["location_id"] in locations, "Invalid citizen location")
         require(citizen["home_id"] in locations, "Invalid home reference")
         require(locations[citizen["home_id"]]["kind"] == "home", "Home must reference a home")
-        if state["schema_version"] == 4:
+        if state["schema_version"] >= 4:
             identity = citizen.get("identity")
             require(
                 isinstance(identity, dict)
@@ -141,7 +202,50 @@ def validate(state, require_private_events=False):
                 ),
                 "Invalid identity text",
             )
-        if state["schema_version"] in (3, 4):
+        for list_field in ("values", "fears", "habits", "long_term_goals"):
+            if list_field in citizen:
+                items = citizen[list_field]
+                require(
+                    isinstance(items, list)
+                    and 1 <= len(items) <= MAX_IDENTITY_LIST_LENGTH
+                    and all(
+                        isinstance(item, str)
+                        and item.strip()
+                        and len(item) <= MAX_IDENTITY_TEXT_LENGTH
+                        for item in items
+                    ),
+                    f"Invalid citizen {list_field}",
+                )
+        plan = citizen.get("current_plan")
+        if plan is not None:
+            require(
+                isinstance(plan, dict)
+                and set(plan) == {"summary", "started_tick"}
+                and isinstance(plan["summary"], str)
+                and plan["summary"].strip()
+                and len(plan["summary"]) <= MAX_IDENTITY_TEXT_LENGTH
+                and type(plan["started_tick"]) is int
+                and 0 <= plan["started_tick"] <= clock["tick"],
+                "Invalid current plan",
+            )
+        if "emotional_state" in citizen:
+            require(
+                citizen["emotional_state"] in EMOTIONAL_STATES,
+                "Invalid emotional state",
+            )
+        if "short_term_goals" in citizen:
+            goals = citizen["short_term_goals"]
+            require(
+                isinstance(goals, list)
+                and len(goals) <= MAX_SHORT_TERM_GOALS
+                and all(
+                    isinstance(g, str) and g.strip()
+                    and len(g) <= MAX_GOAL_TEXT_LENGTH
+                    for g in goals
+                ),
+                "Invalid short-term goals",
+            )
+        if state["schema_version"] in (3, 4, 5, 6):
             needs = citizen.get("needs")
             require(
                 isinstance(needs, dict) and set(needs) == {"hunger", "energy"},
@@ -206,7 +310,7 @@ def validate(state, require_private_events=False):
         previous_id, previous_tick = event["id"], event["tick"]
 
     private_social = state.get("private_social", {})
-    require(state["schema_version"] in (2, 3, 4) or not private_social, "Schema 1 cannot contain social state")
+    require(state["schema_version"] in (2, 3, 4, 5, 6) or not private_social, "Schema 1 cannot contain social state")
     require(isinstance(private_social, dict), "Invalid private social state")
     event_by_id = {event["id"]: event for event in state["events"]}
     citizens = state["citizens"]
@@ -279,7 +383,7 @@ def validate(state, require_private_events=False):
         )
 
     private_ai = state.get("private_ai", {})
-    require(state["schema_version"] == 4 or not private_ai, "Older schemas cannot contain AI state")
+    require(state["schema_version"] >= 4 or not private_ai, "Older schemas cannot contain AI state")
     require(isinstance(private_ai, dict), "Invalid private AI state")
     for owner_id, ai_state in private_ai.items():
         require(owner_id in citizens and isinstance(ai_state, dict), "Invalid AI state owner")
@@ -295,15 +399,21 @@ def validate(state, require_private_events=False):
                 "Invalid AI reply cooldown",
             )
 
+    if state["schema_version"] >= 5:
+        validate_spatial(state)
+    if state["schema_version"] == 6:
+        from population import validate_population
+        validate_population(state)
+        from institutions import validate_institutions
+        validate_institutions(state)
+
 
 def migrate(state):
     """Return a validated current-schema copy without discarding old world data."""
     original_version = state.get("schema_version")
-    validate(state, require_private_events=original_version in (2, 3, 4))
-    if state["schema_version"] == SCHEMA_VERSION:
-        return copy.deepcopy(state)
+    validate(state, require_private_events=original_version in (2, 3, 4, 5, 6))
     candidate = copy.deepcopy(state)
-    candidate["schema_version"] = SCHEMA_VERSION
+    candidate["schema_version"] = max(original_version, SCHEMA_VERSION)
     for citizen_id, citizen in candidate["citizens"].items():
         if original_version in (1, 2):
             citizen["needs"] = {"hunger": 0, "energy": 100}
@@ -315,7 +425,16 @@ def migrate(state):
                 "wake_hour": 6,
             }
             citizen["activity"] = "resting"
-        citizen["identity"] = default_identity(citizen_id)
+        if original_version < 4:
+            citizen["identity"] = default_identity(citizen_id)
+        else:
+            profile = default_profile(citizen_id, citizen.get("identity", {}).get("personal_goal", "Build a steady life in the neighborhood."))
+            for k, v in profile.items():
+                citizen.setdefault(k, copy.deepcopy(v))
+        citizen.setdefault("current_plan", None)
+        citizen.setdefault("emotional_state", "content")
+        citizen.setdefault("short_term_goals", [])
+    initialize_spatial(candidate)
     validate(candidate, require_private_events=True)
     return candidate
 
@@ -336,7 +455,7 @@ def write_snapshot(path, state):
             temporary.unlink(missing_ok=True)
 
 
-class World:
+class World(SpatialWorldMixin):
     def __init__(
         self,
         save_path,
@@ -373,9 +492,16 @@ class World:
             raise ValueError("AI timeout must be positive")
         if type(ai_reply_cooldown_ticks) is not int or ai_reply_cooldown_ticks < 1:
             raise ValueError("AI reply cooldown must be a positive integer")
+        self._scheduler = None
         self._ai_brains = dict(ai_brains)
         self._ai_timeout_seconds = float(ai_timeout_seconds)
         self._ai_reply_cooldown_ticks = ai_reply_cooldown_ticks
+        from ai_reasoning import CharacterReasoningGateway
+        self._ai_gateway = CharacterReasoningGateway(
+            ai_brains=self._ai_brains,
+            timeout_seconds=self._ai_timeout_seconds,
+            cooldown_ticks=self._ai_reply_cooldown_ticks,
+        )
 
     def snapshot(self):
         """Return an isolated public copy with all private social state removed."""
@@ -383,6 +509,7 @@ class World:
             public = copy.deepcopy(self._state)
             public.pop("private_social", None)
             public.pop("private_ai", None)
+            public.pop("private_knowledge", None)
             return public
 
     def citizen_context(self, citizen_id):
@@ -458,49 +585,33 @@ class World:
             return sleep_hour <= hour < wake_hour
         return hour >= sleep_hour or hour < wake_hour
 
-    @staticmethod
-    def _connected_destination(state, source_id, destination_id):
-        for path in state["paths"].values():
-            if path["from"] == source_id and path["to"] == destination_id:
-                return True
-            if path["bidirectional"] and path["to"] == source_id and path["from"] == destination_id:
-                return True
-        return False
-
-    @classmethod
-    def _next_step(cls, state, source_id, destination_id):
-        """Return the first hop on a deterministic shortest route."""
-        if source_id == destination_id:
-            return None
-        queue = [(source_id, None)]
-        visited = {source_id}
-        while queue:
-            location_id, first_step = queue.pop(0)
-            neighbors = set()
-            for path in state["paths"].values():
-                if path["from"] == location_id:
-                    neighbors.add(path["to"])
-                if path["bidirectional"] and path["to"] == location_id:
-                    neighbors.add(path["from"])
-            for neighbor in sorted(neighbors):
-                if neighbor in visited:
-                    continue
-                step = neighbor if first_step is None else first_step
-                if neighbor == destination_id:
-                    return step
-                visited.add(neighbor)
-                queue.append((neighbor, step))
-        return None
-
     @classmethod
     def choose_action(cls, state, citizen_id, private_social=None):
         """Choose one inspectable movement action from a detached state."""
         citizen = state["citizens"][citizen_id]
+        if citizen.get("control") == "human":
+            return None
+        incident = state.get("spatial", {}).get("incident")
+        if incident:
+            if incident["citizen_id"] == citizen_id and incident["status"] != "recovered":
+                return None
+            if citizen_id in incident["witnesses"] and citizen_id != incident["citizen_id"]:
+                patient = state["citizens"][incident["citizen_id"]]
+                if incident["status"] == "needs_help" and distance(citizen["position"],patient["position"]) <= 90 and clear_segment(citizen["position"],patient["position"]):
+                    return {"actor_id":citizen_id,"action_name":"assist","target_id":incident["citizen_id"]}
+                if incident.get("helper_id") == citizen_id and citizen_id not in incident["reported_by"]:
+                    if distance(citizen["position"],TOWN["places"]["police"]["anchor"]) <= 110:
+                        return {"actor_id":citizen_id,"action_name":"report","target_id":"police"}
+                    if citizen.get("destination_id") != "police":
+                        return {"actor_id":citizen_id,"action_name":"move","target_id":"police"}
+                    return None
         schedule = citizen["schedule"]
         location_id = citizen["location_id"]
         home_id = citizen["home_id"]
         hour = state["clock"]["tick"] % HOURS_PER_DAY
         energy = citizen["needs"]["energy"]
+        if energy > LOW_ENERGY and state["clock"]["tick"] < citizen.get("plan_until_tick", 0):
+            return None
 
         if energy <= LOW_ENERGY or (
             location_id == home_id
@@ -527,23 +638,36 @@ class World:
             ):
                 destination_id = home_id
 
-        next_location = cls._next_step(state, location_id, destination_id)
-        if next_location is None:
-            return None
-        return {
-            "actor_id": citizen_id,
-            "action_name": "move",
-            "target_id": next_location,
-        }
+        if citizen.get("commitments") and energy > LOW_ENERGY:
+            commitment = next((entry for entry in citizen["commitments"] if entry["start"] <= hour < entry["end"]), None)
+            if commitment is None:
+                from spatial import HOUR_SECONDS
+                commitment = next((entry for entry in citizen["commitments"]
+                    if hour < entry["start"] and entry["start"]-hour <=
+                    math.ceil(distance(citizen["position"], destination_anchor(citizen_id,entry["place_id"])) /
+                              (citizen.get("walking_speed",148)*HOUR_SECONDS))), None)
+            destination_id = commitment["place_id"] if commitment else home_id
 
-    def _advance_one_tick(self, only_if_running=False):
+        if citizen.get("destination_id") == destination_id:
+            return None
+        anchor = destination_anchor(citizen_id,destination_id)
+        if distance(citizen["position"], anchor) < 2:
+            return None
+        return {"actor_id": citizen_id, "action_name": "move", "target_id": destination_id}
+
+    def _advance_one_tick(self, only_if_running=False, spatial_hour=False):
         with self._lock:
             if only_if_running and not self._state["clock"]["running"]:
                 return
             candidate = copy.deepcopy(self._state)
+            if spatial_hour:
+                from spatial import HOUR_SECONDS
+                candidate["spatial"]["hour_elapsed"] -= HOUR_SECONDS
             candidate["clock"]["tick"] += 1
             hour = candidate["clock"]["tick"] % HOURS_PER_DAY
-            for citizen in candidate["citizens"].values():
+            for citizen_id, citizen in candidate["citizens"].items():
+                if citizen.get("control") == "human":
+                    continue
                 needs = citizen["needs"]
                 needs["hunger"] = min(100, needs["hunger"] + 1)
                 at_home = citizen["location_id"] == citizen["home_id"]
@@ -552,7 +676,12 @@ class World:
                     needs["energy"] = min(100, needs["energy"] + (8 if sleeping else 4))
                 else:
                     needs["energy"] = max(0, needs["energy"] - 3)
-                if sleeping:
+                incident = candidate.get("spatial", {}).get("incident")
+                if incident and incident["citizen_id"] == citizen_id and incident["status"] != "recovered":
+                    continue
+                if citizen.get("route"):
+                    citizen["activity"] = "travelling"
+                elif sleeping:
                     citizen["activity"] = "sleeping"
                 elif at_home:
                     citizen["activity"] = "resting"
@@ -560,19 +689,70 @@ class World:
                     citizen["activity"] = "at_regular_destination"
                 else:
                     citizen["activity"] = "travelling"
+            from institutions import update_institutions
+            update_institutions(self, candidate)
             validate(candidate, require_private_events=True)
             write_snapshot(self._path, candidate)
             self._state = candidate
             for citizen_id in sorted(candidate["citizens"]):
+                citizen = candidate["citizens"][citizen_id]
+                if citizen.get("control") == "human":
+                    continue
+                handled = False
+                brain = self._ai_brains.get(citizen_id)
+                if brain and getattr(brain, "background_reasoning", False):
+                    if self._scheduler is None:
+                        from citizen_scheduler import CitizenScheduler
+                        self._scheduler = CitizenScheduler(self)
+                    self._scheduler.submit(citizen_id)
+                    brain = None
+                if brain and getattr(brain, "reasoning_brain", False) and self._ai_gateway.can_reason(citizen_id, candidate["clock"]["tick"]):
+                    needs = citizen.get("needs", {})
+                    if needs.get("energy", 100) <= LOW_ENERGY or needs.get("hunger", 0) >= HIGH_HUNGER:
+                        req_type = "reconsider_plan"
+                        reason = "needs threshold reached"
+                    elif not citizen.get("route") and citizen.get("activity") in ("resting", "at_regular_destination"):
+                        req_type = "perceive_and_decide"
+                        reason = "idle between journeys"
+                    else:
+                        req_type = "perceive_and_decide"
+                        reason = "tick routine"
+
+                    decision = self._ai_gateway.request_decision(self, citizen_id, req_type, reason)
+                    if decision.get("decision") != "none":
+                        self._ai_gateway.execute_decision(self, citizen_id, decision)
+                        handled = True
+
+                if not handled:
+                    decision_state = copy.deepcopy(self._state)
+                    social = copy.deepcopy(
+                        self._state.get("private_social", {}).get(
+                            citizen_id, {"memories": [], "relationships": {}, "beliefs": {}}
+                        )
+                    )
+                    action = self.choose_action(decision_state, citizen_id, social)
+                    if action is not None:
+                        self.act(**action)
+
+    def sync_citizen_movements(self):
+        """Ensure all citizens whose schedule/commitment requires travel start moving immediately."""
+        with self._lock:
+            for cid in sorted(self._state["citizens"]):
+                c = self._state["citizens"][cid]
+                if c.get("control") == "human" or c.get("route"):
+                    continue
                 decision_state = copy.deepcopy(self._state)
                 social = copy.deepcopy(
                     self._state.get("private_social", {}).get(
-                        citizen_id, {"memories": [], "relationships": {}, "beliefs": {}}
+                        cid, {"memories": [], "relationships": {}, "beliefs": {}}
                     )
                 )
-                action = self.choose_action(decision_state, citizen_id, social)
+                action = self.choose_action(decision_state, cid, social)
                 if action is not None:
-                    self.act(**action)
+                    try:
+                        self.act(**action)
+                    except ValueError:
+                        pass
 
     def _ai_reply_is_ready(self, citizen_id, actor_id):
         with self._lock:
@@ -584,6 +764,7 @@ class World:
             )
             return (
                 last_tick is None
+                or actor_id == "player"
                 or self._state["clock"]["tick"] - last_tick >= self._ai_reply_cooldown_ticks
             )
 
@@ -598,6 +779,7 @@ class World:
                     citizen_id, {"memories": [], "relationships": {}, "beliefs": {}}
                 )
             )
+            social["observations"] = copy.deepcopy(self._state.get("private_knowledge", {}).get(citizen_id, [])[-10:])
             incoming = next(
                 memory for memory in reversed(social["memories"])
                 if memory["id"] == incoming_event_id
@@ -701,6 +883,36 @@ class World:
         if brain is None or not self._ai_reply_is_ready(citizen_id, actor_id):
             return
         try:
+            if getattr(brain, "reasoning_brain", False):
+                with self._lock:
+                    actor = self._state["citizens"][actor_id]
+                    social = self._state.get("private_social", {}).get(citizen_id, {})
+                    incoming_mem = next(
+                        m for m in reversed(social.get("memories", []))
+                        if m["id"] == incoming_event_id
+                    )
+                incoming_details = {
+                    "speaker": {"id": actor_id, "name": actor["name"]},
+                    "message": incoming_mem["message"],
+                    "intent": incoming_mem.get("intent", "neutral"),
+                }
+                if getattr(brain, "background_reasoning", False):
+                    if self._scheduler is None:
+                        from citizen_scheduler import CitizenScheduler
+                        self._scheduler = CitizenScheduler(self)
+                    incoming_details["event_id"] = incoming_event_id
+                    self._scheduler.submit(citizen_id, incoming_details)
+                    return
+                decision = self._ai_gateway.request_decision(
+                    self, citizen_id, "respond_to_conversation",
+                    reason=f"Spoken to by {actor_id}",
+                    incoming=incoming_details,
+                )
+                if decision.get("decision") == "talk" and decision.get("message"):
+                    decision["target_id"] = actor_id
+                    self._ai_gateway.execute_decision(self, citizen_id, decision, reply_to=actor_id)
+                return
+
             request = self._build_ai_request(citizen_id, actor_id, incoming_event_id)
             response = self._call_ai_brain(brain, request)
             allowed_subject_ids = request["allowed_actions"][1]["report_subject_ids"]
@@ -753,52 +965,18 @@ class World:
             citizens = self._state["citizens"]
             if not isinstance(actor_id, str) or actor_id not in citizens:
                 raise ValueError("Unknown actor")
-            if not isinstance(action_name, str) or action_name not in {"talk", "move"}:
+            if not isinstance(action_name, str) or action_name not in {"talk", "move", "steer", "engage", "disengage", "assist", "report", "wait", "rest", "eat", "work"}:
                 raise ValueError("Unsupported action")
-            if action_name == "move":
+            if action_name != "talk":
                 if _ai_reply_to is not None:
-                    raise ValueError("Move cannot be an AI reply")
-                if not isinstance(target_id, str) or target_id not in self._state["locations"]:
-                    raise ValueError("Unknown destination")
-                if message is not None:
-                    raise ValueError("Move does not accept a message")
-                if params is None:
-                    params = {}
-                if not isinstance(params, dict) or params:
-                    raise ValueError("Move does not accept parameters")
-                source_id = citizens[actor_id]["location_id"]
-                if source_id == target_id:
-                    raise ValueError("Citizen is already at destination")
-                if not self._connected_destination(self._state, source_id, target_id):
-                    raise ValueError("Destination is not connected to current location")
-
-                candidate = copy.deepcopy(self._state)
-                candidate["citizens"][actor_id]["location_id"] = target_id
-                schedule = candidate["citizens"][actor_id]["schedule"]
-                if target_id == schedule["regular_destination_id"]:
-                    candidate["citizens"][actor_id]["activity"] = "at_regular_destination"
-                elif target_id == candidate["citizens"][actor_id]["home_id"]:
-                    candidate["citizens"][actor_id]["activity"] = "resting"
-                else:
-                    candidate["citizens"][actor_id]["activity"] = "travelling"
-                events = candidate["events"]
-                event = {
-                    "id": events[-1]["id"] + 1 if events else 1,
-                    "tick": candidate["clock"]["tick"],
-                    "type": "citizen_moved",
-                    "entity_ids": [actor_id],
-                    "details": {"from_location_id": source_id, "to_location_id": target_id},
-                }
-                events.append(event)
-                validate(candidate, require_private_events=True)
-                write_snapshot(self._path, candidate)
-                self._state = candidate
-                return copy.deepcopy(event)
+                    raise ValueError("Only talk can be an AI reply")
+                return self._spatial_action(actor_id, action_name, target_id, message, params)
 
             if not isinstance(target_id, str) or target_id not in citizens:
                 raise ValueError("Unknown target")
             if actor_id == target_id:
                 raise ValueError("A citizen cannot target themselves with talk")
+            self._check_talk_range(actor_id, target_id)
             if _ai_reply_to is not None:
                 if _ai_reply_to != target_id:
                     raise ValueError("AI reply target does not match")
@@ -809,7 +987,8 @@ class World:
                     .get(target_id)
                 )
                 if (
-                    last_tick is not None
+                    target_id != "player"
+                    and last_tick is not None
                     and self._state["clock"]["tick"] - last_tick
                     < self._ai_reply_cooldown_ticks
                 ):
@@ -887,7 +1066,24 @@ class World:
                     actor_id, {"last_reply_tick_by_actor": {}}
                 )
                 ai_state["last_reply_tick_by_actor"][target_id] = tick
-            validate(candidate, require_private_events=True)
-            write_snapshot(self._path, candidate)
-            self._state = candidate
+            self._publish_candidate(candidate)
             return copy.deepcopy(event)
+
+    def interrupt_citizen(self, citizen_id, reason="interrupted"):
+        """Cancel a citizen's active journey/plan and trigger immediate AI reconsideration."""
+        with self._lock:
+            citizen = self._state["citizens"].get(citizen_id)
+            if not citizen:
+                raise ValueError("Unknown citizen")
+            citizen["route"] = []
+            citizen["destination_id"] = None
+            citizen["current_plan"] = None
+            self.save()
+
+        if hasattr(self, "_ai_gateway") and self._ai_gateway.has_brain(citizen_id) and getattr(self._ai_brains.get(citizen_id), "reasoning_brain", False):
+            decision = self._ai_gateway.request_decision(
+                self, citizen_id, "reconsider_plan", reason=reason,
+            )
+            if decision.get("decision") != "none":
+                return self._ai_gateway.execute_decision(self, citizen_id, decision)
+        return None

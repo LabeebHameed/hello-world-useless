@@ -20,7 +20,7 @@ class WorldTests(unittest.TestCase):
     def test_starter_and_isolated_snapshot(self):
         state = self.world.snapshot()
         self.assertEqual(len(state["citizens"]), 3)
-        self.assertEqual(len(state["locations"]), 4)
+        self.assertEqual(len(state["locations"]), 44)
         self.assertEqual(len(state["paths"]), 3)
         validate(state)
         state["citizens"].clear()
@@ -63,7 +63,7 @@ class WorldTests(unittest.TestCase):
 
         def launch():
             process = subprocess.Popen(
-                [sys.executable, str(root / "server.py"), "--save", str(path), "--tick-seconds", "0.03"],
+                [sys.executable, str(root / "server.py"), "--headless", "--save", str(path), "--tick-seconds", "0.03"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
             )
             return process
@@ -94,6 +94,9 @@ class WorldTests(unittest.TestCase):
         finally:
             stop(first)
         saved = json.loads(path.read_text())
+        saved.pop("private_knowledge", None)
+        saved.pop("private_social", None)
+        saved.pop("private_ai", None)
         self.assertEqual(World(path).snapshot(), saved)
         second = launch()
         try:

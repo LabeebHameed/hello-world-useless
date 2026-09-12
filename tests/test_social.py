@@ -165,11 +165,11 @@ class SocialActionTests(unittest.TestCase):
 
         migrated = World(migration_path)
         public = migrated.snapshot()
-        self.assertEqual(public["schema_version"], 4)
+        self.assertEqual(public["schema_version"], 5)
         self.assertEqual(public["clock"]["tick"], 7)
         self.assertEqual(public["citizens"]["citizen-1"]["money"], 73)
         self.assertEqual(migrated.citizen_context("citizen-1")["memories"], [])
-        self.assertEqual(json.loads(migration_path.read_text())["schema_version"], 4)
+        self.assertEqual(json.loads(migration_path.read_text())["schema_version"], 5)
 
 
 if __name__ == "__main__":

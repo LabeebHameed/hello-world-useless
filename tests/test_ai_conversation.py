@@ -74,6 +74,14 @@ class AIConversationTests(unittest.TestCase):
         brain = FakeBrain()
         world = self.world_with("citizen-2", brain)
         secret = "The spare key is beneath Cleo's flowerpot."
+        # Conversations now require physical proximity; keep this privacy test scoped
+        # to dialogue by arranging its three participants at the same outdoor place.
+        fixture = json.loads(self.path.read_text())
+        for citizen in fixture["citizens"].values():
+            citizen["position"] = dict(fixture["citizens"]["citizen-1"]["position"])
+            citizen["location_id"] = "home-1"
+        self.path.write_text(json.dumps(fixture))
+        world = self.world_with("citizen-2", brain)
         world.act("citizen-1", "talk", "citizen-3", secret)
         world.act(
             "citizen-1",
@@ -206,7 +214,7 @@ class AIConversationTests(unittest.TestCase):
         world = World(self.path, ai_brains={"citizen-2": brain}, ai_timeout_seconds=0.25)
 
         public = world.snapshot()
-        self.assertEqual(public["schema_version"], 4)
+        self.assertEqual(public["schema_version"], 5)
         self.assertEqual(
             set(public["citizens"]["citizen-2"]["identity"]),
             {"personality_traits", "personal_goal", "speaking_style"},
