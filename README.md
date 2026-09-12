@@ -10,9 +10,12 @@
 
 
 ### Team Members
-- Team Lead: Labeeb Hameed - [College Name]
-- Member 2: [Name] - [College Name]
-- Member 3: [Name] - [College Name]
+- Team Lead: Labeeb Hameed
+- Member 2: Appu Kurian (Kuriyaappi)
+- Member 3: Arundhathi Krishna
+
+[![Project Journal](https://img.shields.io/badge/📖_Project_Journal-Read_The_Story-ea34df?style=for-the-badge)](https://labeebhameed.github.io/hello-world-useless/)
+[![GitHub Pages](https://img.shields.io/badge/GitHub_Pages-Deployed-2ecc71?style=for-the-badge)](https://labeebhameed.github.io/hello-world-useless/)
 
 ### Project Description
 Hello World is an authoritative, multi-agent living town simulation built entirely from scratch with **zero external pip or npm dependencies**. Instead of trivially dumping `"Hello, World!"` to `stdout`, it simulates 50 persistent autonomous citizens across 7 districts with continuous circadian schedules, presence-based municipal institutions, 20 Hz continuous spatial clearance physics, and local LLM cognitive reasoning. To receive a greeting, a human player must physically navigate an expansive 12,288 × 9,216 coordinate world, locate an active citizen, and initiate a social dialogue where their private neural cognitive brain dynamically decides to greet you.
@@ -294,8 +297,8 @@ To ensure this project sets a new standard for computational rigor in a "useless
 
 ## Team Contributions
 - **Labeeb Hameed (Team Lead):** Architectural design, authoritative 20 Hz simulation engine (`world.py`), spatial collision grid, continuous raycast clearance navigation (`spatial.py`), and municipal town layout (`town.py`).
-- **[Member 2 Name]:** Cognitive character architecture, asynchronous bounded scheduler (`citizen_scheduler.py`), LM Studio JSON schema validator (`ai_reasoning.py`), and `FastCitizenBrain` heuristic fallback.
-- **[Member 3 Name]:** Presence-based civic institutions engine (`institutions.py`), attendance ledgers, vanilla HTML5 Canvas renderer (`renderer.js`), camera tracking, and interactive browser client (`app.js`).
+- **Appu Kurian (Kuriyaappi):** Cognitive character architecture, asynchronous bounded scheduler (`citizen_scheduler.py`), LM Studio JSON schema validator (`ai_reasoning.py`), and `FastCitizenBrain` heuristic fallback.
+- **Arundhathi Krishna:** Presence-based civic institutions engine (`institutions.py`), attendance ledgers, vanilla HTML5 Canvas renderer (`renderer.js`), camera tracking, and interactive browser client (`app.js`).
 
 ---
 Made with ❤️ at TinkerHub Useless Projects 
